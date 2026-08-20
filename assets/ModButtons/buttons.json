@@ -1,0 +1,32 @@
+[
+  {
+    "label": "Create Album",
+    "codeLabel": "createanalbum.button.create",
+    "tooltip": "Open the album creation screen.",
+    "codeTooltip": "createanalbum.tooltip.create",
+    "icon": "",
+    "assembly": "com.jordanss.createanalbum",
+    "class": "Albummodelite.AlbumModActions",
+    "method": "OpenCreateAlbum"
+  },
+  {
+    "label": "Discography",
+    "codeLabel": "createanalbum.button.discography",
+    "tooltip": "View your released albums.",
+    "codeTooltip": "createanalbum.tooltip.discography",
+    "icon": "",
+    "assembly": "com.jordanss.createanalbum",
+    "class": "Albummodelite.AlbumModActions",
+    "method": "OpenDiscography"
+  },
+  {
+    "label": "Album Chart",
+    "codeLabel": "createanalbum.button.chart",
+    "tooltip": "View the album chart.",
+    "codeTooltip": "createanalbum.tooltip.chart",
+    "icon": "",
+    "assembly": "com.jordanss.createanalbum",
+    "class": "Albummodelite.AlbumModActions",
+    "method": "OpenAlbumChart"
+  }
+]

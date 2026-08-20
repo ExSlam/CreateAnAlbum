@@ -1,0 +1,288 @@
+[
+  {
+    "id": "caa_first_album",
+    "title": "Our First Album",
+    "description": "The office is buzzing. <blue>[album_group]</color> has released its first album, <blue>[album_title]</color>.\n\n@actor_0@ lingers by the doorway, trying and failing to hide a grin. \"President... we actually did it. An album. A real one.\"",
+    "image": "",
+    "random": false,
+    "actors": [
+      {
+        "name": "@actor_0@",
+        "type": "idol",
+        "conditions": []
+      }
+    ],
+    "conditions": [],
+    "effects": [],
+    "options": [
+      {
+        "text": "Celebrate with the group",
+        "tooltip": "Mark the milestone together.",
+        "effects": [],
+        "SNS": [
+          {
+            "poster": "F_C_YA",
+            "text": "first album celebrations are the cutest, they worked so hard for this!!"
+          }
+        ],
+        "result": {
+          "description": "You call everyone into the lounge. Cheap cake, loud music, and exhausted smiles turn the release day into a memory nobody wants to leave.",
+          "delay": 0
+        },
+        "requirements": []
+      },
+      {
+        "text": "Keep the team focused",
+        "tooltip": "The release is only the beginning.",
+        "effects": [],
+        "SNS": [],
+        "result": {
+          "description": "You congratulate the team, then remind them that the charts start moving now. The mood settles into determined excitement.",
+          "delay": 0
+        },
+        "requirements": []
+      }
+    ]
+  },
+  {
+    "id": "caa_rival_first_album",
+    "title": "A Rival Enters the Album Market",
+    "description": "Industry news breaks across every feed: <blue>[album_rival]</color> has released a new album, <blue>[album_title]</color>.\n\nTheir rollout is polished, their fans are loud, and suddenly the album chart feels a lot more crowded.",
+    "image": "",
+    "random": false,
+    "actors": [],
+    "conditions": [],
+    "effects": [],
+    "options": [
+      {
+        "text": "Study their rollout",
+        "tooltip": "Keep an eye on the competition.",
+        "effects": [],
+        "SNS": [
+          {
+            "poster": "M_HC_YA",
+            "text": "album season just got serious, everybody is dropping at once"
+          }
+        ],
+        "result": {
+          "description": "You have the staff collect every ad, teaser, and chart update they can find. Competition is useful when you learn from it.",
+          "delay": 0
+        },
+        "requirements": []
+      },
+      {
+        "text": "Ignore the noise",
+        "tooltip": "Focus on your own groups.",
+        "effects": [],
+        "SNS": [],
+        "result": {
+          "description": "You close the article. Rival headlines do not make your next record better — work does.",
+          "delay": 0
+        },
+        "requirements": []
+      }
+    ]
+  },
+  {
+    "id": "caa_low_sales",
+    "title": "Album Sales Are Slowing",
+    "description": "The latest chart report for <blue>[album_title]</color> is uncomfortable reading: only <blue>[album_sales]</color> new sales this period.\n\n@actor_0@ looks worried. \"Do you think people are already moving on?\"",
+    "image": "",
+    "random": false,
+    "actors": [
+      {
+        "name": "@actor_0@",
+        "type": "idol",
+        "conditions": []
+      }
+    ],
+    "conditions": [],
+    "effects": [],
+    "options": [
+      {
+        "text": "Increase promotion",
+        "tooltip": "Push the album harder while there is still time.",
+        "effects": [],
+        "SNS": [
+          {
+            "poster": "F_C_T",
+            "text": "the extra album promos are everywhere lately... not complaining though"
+          }
+        ],
+        "result": {
+          "description": "The marketing team scrambles together new clips, interviews, and social posts. Whether it changes the trend remains to be seen.",
+          "delay": 0
+        },
+        "requirements": []
+      },
+      {
+        "text": "Stay patient",
+        "tooltip": "Let the album find its audience naturally.",
+        "effects": [],
+        "SNS": [],
+        "result": {
+          "description": "You decide not to panic. Not every record has to explode immediately — some grow slowly.",
+          "delay": 0
+        },
+        "requirements": []
+      }
+    ]
+  },
+  {
+    "id": "caa_album_gone_wrong",
+    "title": "The Album Rollout Goes Wrong",
+    "description": "Something has gone badly off course with <blue>[album_title]</color>. Momentum has collapsed far faster than expected, and the staff are arguing over what went wrong.\n\n@actor_0@ finally asks the question everyone is avoiding: \"Can we still save it?\"",
+    "image": "",
+    "random": false,
+    "actors": [
+      {
+        "name": "@actor_0@",
+        "type": "idol",
+        "conditions": []
+      }
+    ],
+    "conditions": [],
+    "effects": [],
+    "options": [
+      {
+        "text": "Call an emergency meeting",
+        "tooltip": "Rework the rollout before it gets worse.",
+        "effects": [],
+        "SNS": [],
+        "result": {
+          "description": "Every department gets dragged into the conference room. By midnight, the whiteboard is covered in crossed-out plans and a brand-new recovery strategy.",
+          "delay": 0
+        },
+        "requirements": []
+      },
+      {
+        "text": "Cut losses and regroup",
+        "tooltip": "Protect the next release instead.",
+        "effects": [],
+        "SNS": [],
+        "result": {
+          "description": "You stop throwing resources at a campaign that is not landing. It stings, but the team starts thinking about what comes next.",
+          "delay": 0
+        },
+        "requirements": []
+      }
+    ]
+  },
+  {
+    "id": "caa_celebration_party",
+    "title": "Album Celebration Party",
+    "description": "<blue>[album_title]</color> has given <blue>[album_group]</color> a reason to celebrate. The chart result is strong enough that the staff are already asking what kind of party you want.\n\n@actor_0@ is very clearly hoping the answer is \"a big one.\"",
+    "image": "",
+    "random": false,
+    "actors": [
+      {
+        "name": "@actor_0@",
+        "type": "idol",
+        "conditions": []
+      }
+    ],
+    "conditions": [],
+    "effects": [],
+    "options": [
+      {
+        "text": "Throw a big party",
+        "tooltip": "Let everyone enjoy the win.",
+        "effects": [],
+        "SNS": [
+          {
+            "poster": "F_HC_YA",
+            "text": "THE ALBUM PARTY PHOTOS?? everyone looks so happy omg"
+          }
+        ],
+        "result": {
+          "description": "The office turns into a party venue for one night. The team eats too much, takes too many photos, and celebrates like the next deadline does not exist.",
+          "delay": 0
+        },
+        "requirements": []
+      },
+      {
+        "text": "Keep it intimate",
+        "tooltip": "A smaller dinner with the team.",
+        "effects": [],
+        "SNS": [],
+        "result": {
+          "description": "You book a quiet dinner instead. No press, no cameras — just the people who made the record happen.",
+          "delay": 0
+        },
+        "requirements": []
+      },
+      {
+        "text": "Save the budget",
+        "tooltip": "Celebrate after the next milestone.",
+        "effects": [],
+        "SNS": [],
+        "result": {
+          "description": "You promise there will be a celebration later. The finance team is delighted. The idols are... less delighted.",
+          "delay": 0
+        },
+        "requirements": []
+      }
+    ]
+  },
+  {
+    "id": "caa_showcase",
+    "title": "Album Showcase Opportunity",
+    "description": "Demand around <blue>[album_title]</color> is strong enough for a dedicated showcase. A promoter offers a venue, while the media team argues that a livestream could reach even more fans.\n\n@actor_0@ looks ready to perform either way.",
+    "image": "",
+    "random": false,
+    "actors": [
+      {
+        "name": "@actor_0@",
+        "type": "idol",
+        "conditions": []
+      }
+    ],
+    "conditions": [],
+    "effects": [],
+    "options": [
+      {
+        "text": "Book a live showcase",
+        "tooltip": "Put the album on stage.",
+        "effects": [],
+        "SNS": [
+          {
+            "poster": "M_C_YA",
+            "text": "the album showcase was SO good, hearing those songs live changed everything"
+          }
+        ],
+        "result": {
+          "description": "The venue sells out faster than expected. For one night, the album stops being numbers on a chart and becomes a room full of people singing along.",
+          "delay": 0
+        },
+        "requirements": []
+      },
+      {
+        "text": "Host a livestream showcase",
+        "tooltip": "Reach fans everywhere.",
+        "effects": [],
+        "SNS": [
+          {
+            "poster": "F_C_T",
+            "text": "thank you for streaming the showcase!! international fans finally won"
+          }
+        ],
+        "result": {
+          "description": "Cameras, lights, and chat messages fill the studio. The audience is invisible, but the live counter keeps climbing.",
+          "delay": 0
+        },
+        "requirements": []
+      },
+      {
+        "text": "Skip the showcase",
+        "tooltip": "Keep the schedule clear.",
+        "effects": [],
+        "SNS": [],
+        "result": {
+          "description": "You pass. The group keeps promoting through normal appearances instead.",
+          "delay": 0
+        },
+        "requirements": []
+      }
+    ]
+  }
+]

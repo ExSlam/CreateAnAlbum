@@ -1,0 +1,104 @@
+using HarmonyLib;
+using UnityEngine;
+
+namespace Albummodelite
+{
+    /// <summary>
+    /// Runtime component attached by HarmonyIntegration after Idol Manager's gameplay mainScript starts.
+    /// This is deliberately not a BepInEx plugin. IM-HarmonyIntegration discovers and applies the
+    /// Harmony patches in this assembly; the patch below creates the small runtime host only in game.
+    /// </summary>
+    public sealed class CreateAnAlbum : MonoBehaviour
+    {
+        private AlbumPopup createPopup;
+        private AlbumLibraryPopup libraryPopup;
+        private AlbumChartPopup chartPopup;
+
+        private void Awake()
+        {
+            AlbumPersistence.Initialize();
+            RivalsRebornIntegration.BeginGameplaySession();
+
+            if (GetComponent<AlbumSalesManager>() == null)
+                gameObject.AddComponent<AlbumSalesManager>();
+
+            Debug.Log("[CreateAlbum] Harmony runtime initialized.");
+        }
+
+        private void OnDestroy()
+        {
+            AlbumPopupHost.Reset();
+            AlbumPersistence.Shutdown();
+            // RR availability is deliberately latched until the main menu is reached.
+            // A gameplay object being recreated (for example while loading another save) must not
+            // re-probe a mod that was disabled at the beginning of this gameplay session.
+        }
+
+        private void Update()
+        {
+            AlbumPersistence.Tick();
+
+            if (Input.GetKeyDown(KeyCode.F2))
+                OpenCreateAlbum();
+
+            if (Input.GetKeyDown(KeyCode.F3))
+                OpenAlbumLibrary();
+
+            if (Input.GetKeyDown(KeyCode.F8))
+                OpenAlbumChart();
+        }
+
+        public void OpenCreateAlbum()
+        {
+            AlbumPersistence.EnsureCurrentSaveLoaded();
+
+            if (createPopup == null)
+                createPopup = GetComponent<AlbumPopup>() ?? gameObject.AddComponent<AlbumPopup>();
+
+            createPopup.Open();
+        }
+
+        public void OpenAlbumLibrary()
+        {
+            AlbumPersistence.EnsureCurrentSaveLoaded();
+            Albums.DeduplicateInPlace();
+
+            if (libraryPopup == null)
+                libraryPopup = GetComponent<AlbumLibraryPopup>() ?? gameObject.AddComponent<AlbumLibraryPopup>();
+
+            libraryPopup.Open();
+        }
+
+        public void OpenAlbumChart()
+        {
+            AlbumPersistence.EnsureCurrentSaveLoaded();
+            Albums.DeduplicateInPlace();
+
+            if (chartPopup == null)
+                chartPopup = GetComponent<AlbumChartPopup>() ?? gameObject.AddComponent<AlbumChartPopup>();
+
+            chartPopup.Open();
+        }
+    }
+
+    [HarmonyPatch(typeof(mainScript), "Start")]
+    internal static class AlbumMainScriptStartPatch
+    {
+        private static void Postfix(mainScript __instance)
+        {
+            if (__instance == null)
+                return;
+
+            if (!__instance.IsGameScene || mainScript.IsMainMenu())
+            {
+                AlbumPopupHost.Reset();
+                AlbumPersistence.Shutdown();
+                RivalsRebornIntegration.EndGameplaySession();
+                return;
+            }
+
+            if (__instance.GetComponent<CreateAnAlbum>() == null)
+                __instance.gameObject.AddComponent<CreateAnAlbum>();
+        }
+    }
+}
