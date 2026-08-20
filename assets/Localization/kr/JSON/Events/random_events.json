@@ -1,0 +1,288 @@
+[
+  {
+    "id": "caa_first_album",
+    "title": "우리의 첫 앨범",
+    "description": "사무실이 들썩이고 있다. <blue>[album_group]</color>에서 첫 앨범 <blue>[album_title]</color>을 발매했다.\n\n@actor_0@이(가) 문가에 서서 애써 웃음을 감추려 하지만, 좀처럼 뜻대로 되지 않는다. \"사장님... 저희가 정말 해냈어요. 앨범이에요. 진짜 앨범.\"",
+    "image": "",
+    "random": false,
+    "actors": [
+      {
+        "name": "@actor_0@",
+        "type": "idol",
+        "conditions": []
+      }
+    ],
+    "conditions": [],
+    "effects": [],
+    "options": [
+      {
+        "text": "그룹과 함께 축하한다",
+        "tooltip": "다 함께 뜻깊은 순간을 기념합니다.",
+        "effects": [],
+        "SNS": [
+          {
+            "poster": "F_C_YA",
+            "text": "첫 앨범 축하하는 모습 너무 귀여워 다들 진짜 열심히 했나 봐!!"
+          }
+        ],
+        "result": {
+          "description": "모두를 휴게실로 불러 모았다. 저렴한 케이크와 시끄러운 음악, 지친 미소가 어우러져 누구도 끝내고 싶지 않은 발매일의 추억이 되었다.",
+          "delay": 0
+        },
+        "requirements": []
+      },
+      {
+        "text": "팀이 집중력을 유지하게 한다",
+        "tooltip": "발매는 시작에 불과합니다.",
+        "effects": [],
+        "SNS": [],
+        "result": {
+          "description": "팀을 축하한 뒤, 이제부터 차트가 움직이기 시작한다고 일깨워 주었다. 분위기는 결의에 찬 기대감으로 가라앉았다.",
+          "delay": 0
+        },
+        "requirements": []
+      }
+    ]
+  },
+  {
+    "id": "caa_rival_first_album",
+    "title": "앨범 시장에 뛰어든 라이벌",
+    "description": "업계 속보가 모든 피드를 뒤덮었다. <blue>[album_rival]</color>, 새 앨범 <blue>[album_title]</color> 발매.\n\n프로모션은 빈틈없고 팬들의 목소리는 크다. 순식간에 앨범 차트가 훨씬 붐비는 듯하다.",
+    "image": "",
+    "random": false,
+    "actors": [],
+    "conditions": [],
+    "effects": [],
+    "options": [
+      {
+        "text": "상대의 프로모션을 분석한다",
+        "tooltip": "경쟁자의 움직임을 주시합니다.",
+        "effects": [],
+        "SNS": [
+          {
+            "poster": "M_HC_YA",
+            "text": "앨범 시즌 이제 진짜 치열해지네 다들 동시에 앨범 내는 중"
+          }
+        ],
+        "result": {
+          "description": "직원들에게 찾을 수 있는 모든 광고와 티저, 차트 소식을 수집하게 했다. 배울 줄 안다면 경쟁도 도움이 된다.",
+          "delay": 0
+        },
+        "requirements": []
+      },
+      {
+        "text": "소란을 무시한다",
+        "tooltip": "우리 그룹에 집중합니다.",
+        "effects": [],
+        "SNS": [],
+        "result": {
+          "description": "기사를 닫았다. 라이벌의 헤드라인이 다음 앨범을 더 좋게 만들어 주지는 않는다. 답은 노력뿐이다.",
+          "delay": 0
+        },
+        "requirements": []
+      }
+    ]
+  },
+  {
+    "id": "caa_low_sales",
+    "title": "둔화되는 앨범 판매량",
+    "description": "<blue>[album_title]</color>의 최신 차트 보고서를 읽자 마음이 무거워진다. 이번 기간 신규 판매량은 고작 <blue>[album_sales]</color>장.\n\n@actor_0@이(가) 걱정스러운 표정으로 묻는다. \"사람들이 벌써 관심을 잃은 걸까요?\"",
+    "image": "",
+    "random": false,
+    "actors": [
+      {
+        "name": "@actor_0@",
+        "type": "idol",
+        "conditions": []
+      }
+    ],
+    "conditions": [],
+    "effects": [],
+    "options": [
+      {
+        "text": "홍보를 늘린다",
+        "tooltip": "시간이 남아 있을 때 앨범을 더 적극적으로 홍보합니다.",
+        "effects": [],
+        "SNS": [
+          {
+            "poster": "F_C_T",
+            "text": "요즘 앨범 추가 홍보 진짜 여기저기 다 보이네... 뭐 싫다는 건 아니고"
+          }
+        ],
+        "result": {
+          "description": "마케팅팀은 급히 새 영상과 인터뷰, SNS 게시물을 준비했다. 흐름을 뒤집을 수 있을지는 두고 봐야 한다.",
+          "delay": 0
+        },
+        "requirements": []
+      },
+      {
+        "text": "기다려 본다",
+        "tooltip": "앨범이 자연스럽게 듣는 사람을 찾아가도록 둡니다.",
+        "effects": [],
+        "SNS": [],
+        "result": {
+          "description": "당황하지 않기로 했다. 모든 앨범이 발매 직후 폭발적인 반응을 얻어야 하는 건 아니다. 천천히 성장하는 앨범도 있다.",
+          "delay": 0
+        },
+        "requirements": []
+      }
+    ]
+  },
+  {
+    "id": "caa_album_gone_wrong",
+    "title": "꼬여 버린 앨범 프로모션",
+    "description": "<blue>[album_title]</color>의 프로모션이 심각하게 꼬였다. 예상보다 훨씬 빠르게 기세가 꺾였고, 직원들은 무엇이 문제였는지를 두고 언쟁 중이다.\n\n마침내 @actor_0@이(가) 모두가 피하던 질문을 꺼낸다. \"아직 살릴 수 있을까요?\"",
+    "image": "",
+    "random": false,
+    "actors": [
+      {
+        "name": "@actor_0@",
+        "type": "idol",
+        "conditions": []
+      }
+    ],
+    "conditions": [],
+    "effects": [],
+    "options": [
+      {
+        "text": "긴급회의를 소집한다",
+        "tooltip": "더 악화되기 전에 프로모션 계획을 다시 짭니다.",
+        "effects": [],
+        "SNS": [],
+        "result": {
+          "description": "모든 부서가 회의실로 불려 왔다. 자정이 될 무렵 화이트보드는 폐기된 계획으로 가득했고, 완전히 새로운 회복 전략이 윤곽을 드러냈다.",
+          "delay": 0
+        },
+        "requirements": []
+      },
+      {
+        "text": "손실을 감수하고 재정비한다",
+        "tooltip": "다음 발매를 위한 여력을 지킵니다.",
+        "effects": [],
+        "SNS": [],
+        "result": {
+          "description": "효과가 없는 캠페인에 더는 자원을 쏟지 않기로 했다. 뼈아프지만, 팀은 다음을 준비하기 시작한다.",
+          "delay": 0
+        },
+        "requirements": []
+      }
+    ]
+  },
+  {
+    "id": "caa_celebration_party",
+    "title": "앨범 성공 축하 파티",
+    "description": "<blue>[album_title]</color> 덕분에 <blue>[album_group]</color> 모두에게 축하할 일이 생겼다. 차트 성적이 꽤 좋아 직원들은 벌써 어떤 파티를 열지 묻고 있다.\n\n@actor_0@은(는) 대답이 \"성대한 파티\"이기를 바라는 눈치가 역력하다.",
+    "image": "",
+    "random": false,
+    "actors": [
+      {
+        "name": "@actor_0@",
+        "type": "idol",
+        "conditions": []
+      }
+    ],
+    "conditions": [],
+    "effects": [],
+    "options": [
+      {
+        "text": "성대한 파티를 연다",
+        "tooltip": "모두가 성공을 만끽하게 합니다.",
+        "effects": [],
+        "SNS": [
+          {
+            "poster": "F_HC_YA",
+            "text": "앨범 파티 사진 뭐야?? 다들 너무 행복해 보여 어떡해"
+          }
+        ],
+        "result": {
+          "description": "사무실은 하룻밤 동안 파티장으로 변했다. 모두가 배가 터지도록 먹고, 사진을 너무 많이 찍고, 다음 마감일 따위는 없는 것처럼 축하했다.",
+          "delay": 0
+        },
+        "requirements": []
+      },
+      {
+        "text": "조촐하게 축하한다",
+        "tooltip": "팀원들과 함께하는 소규모 저녁 식사입니다.",
+        "effects": [],
+        "SNS": [],
+        "result": {
+          "description": "대신 조용한 저녁 식사 자리를 예약했다. 취재도 카메라도 없이, 오직 앨범을 완성한 사람들만 함께했다.",
+          "delay": 0
+        },
+        "requirements": []
+      },
+      {
+        "text": "예산을 아낀다",
+        "tooltip": "다음 목표를 달성하면 축하합니다.",
+        "effects": [],
+        "SNS": [],
+        "result": {
+          "description": "축하는 나중에 하겠다고 약속했다. 재무팀은 기뻐했다. 아이돌들은... 그만큼 기뻐하지 않았다.",
+          "delay": 0
+        },
+        "requirements": []
+      }
+    ]
+  },
+  {
+    "id": "caa_showcase",
+    "title": "앨범 쇼케이스 제안",
+    "description": "<blue>[album_title]</color>에 대한 반응이 단독 쇼케이스를 열 만큼 뜨겁다. 한 프로모터가 공연장을 제안하고, 미디어팀은 라이브 방송으로 더 많은 팬에게 다가갈 수 있다고 주장한다.\n\n@actor_0@은(는) 어느 쪽이든 무대에 오를 준비가 되어 보인다.",
+    "image": "",
+    "random": false,
+    "actors": [
+      {
+        "name": "@actor_0@",
+        "type": "idol",
+        "conditions": []
+      }
+    ],
+    "conditions": [],
+    "effects": [],
+    "options": [
+      {
+        "text": "라이브 쇼케이스를 연다",
+        "tooltip": "무대에서 앨범을 선보입니다.",
+        "effects": [],
+        "SNS": [
+          {
+            "poster": "M_C_YA",
+            "text": "앨범 쇼케이스 진짜 너무 좋았어 노래를 라이브로 들으니까 완전 다르게 느껴져"
+          }
+        ],
+        "result": {
+          "description": "공연장은 예상보다 빨리 매진되었다. 그날 밤, 앨범은 차트 위 숫자에서 벗어나 모두가 따라 부르는 노래로 가득한 공간이 되었다.",
+          "delay": 0
+        },
+        "requirements": []
+      },
+      {
+        "text": "온라인 쇼케이스를 연다",
+        "tooltip": "어디에 있는 팬이든 함께하게 합니다.",
+        "effects": [],
+        "SNS": [
+          {
+            "poster": "F_C_T",
+            "text": "쇼케이스 스트리밍해 줘서 고마워요!! 해외 팬들 드디어 승리했다"
+          }
+        ],
+        "result": {
+          "description": "카메라와 조명, 채팅 메시지가 스튜디오를 가득 채웠다. 관객은 눈에 보이지 않지만 실시간 시청자 수는 계속 올라갔다.",
+          "delay": 0
+        },
+        "requirements": []
+      },
+      {
+        "text": "쇼케이스를 건너뛴다",
+        "tooltip": "기존 일정을 유지합니다.",
+        "effects": [],
+        "SNS": [],
+        "result": {
+          "description": "제안을 거절했다. 그룹은 대신 평소대로 방송과 행사에 출연하며 프로모션을 이어 갔다.",
+          "delay": 0
+        },
+        "requirements": []
+      }
+    ]
+  }
+]

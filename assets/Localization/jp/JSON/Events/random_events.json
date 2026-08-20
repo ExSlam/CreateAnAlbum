@@ -1,0 +1,288 @@
+[
+  {
+    "id": "caa_first_album",
+    "title": "初めてのアルバム",
+    "description": "オフィスが活気に満ちている。<blue>[album_group]</color>が初のアルバム、<blue>[album_title]</color>をリリースしたのだ。\n\n@actor_0@はドアのそばにたたずみ、こぼれる笑顔を隠そうとしているが、隠しきれていない。「社長……本当にやったんですね。アルバムですよ。本物のアルバムです」",
+    "image": "",
+    "random": false,
+    "actors": [
+      {
+        "name": "@actor_0@",
+        "type": "idol",
+        "conditions": []
+      }
+    ],
+    "conditions": [],
+    "effects": [],
+    "options": [
+      {
+        "text": "グループのみんなと祝う",
+        "tooltip": "この節目をみんなで祝おう。",
+        "effects": [],
+        "SNS": [
+          {
+            "poster": "F_C_YA",
+            "text": "初アルバムのお祝いって最高にかわいい。ここまで本当に頑張ったんだね！！"
+          }
+        ],
+        "result": {
+          "description": "メンバー全員をラウンジに呼び集めた。安いケーキ、大音量の音楽、疲れ切った笑顔。リリース日は、誰も終わらせたくない思い出の一日になった。",
+          "delay": 0
+        },
+        "requirements": []
+      },
+      {
+        "text": "チームの気を引き締める",
+        "tooltip": "リリースは始まりにすぎない。",
+        "effects": [],
+        "SNS": [],
+        "result": {
+          "description": "チームをねぎらった後、チャートが動き始めるのはこれからだと念を押した。その場には、決意を新たにした高揚感が広がった。",
+          "delay": 0
+        },
+        "requirements": []
+      }
+    ]
+  },
+  {
+    "id": "caa_rival_first_album",
+    "title": "ライバル、アルバム市場に参入",
+    "description": "あらゆるフィードを業界ニュースが駆け巡る。<blue>[album_rival]</color>が新作アルバム、<blue>[album_title]</color>をリリースした。\n\nプロモーション展開は隙がなく、ファンの声も大きい。アルバムチャートが急に混み合って見えてきた。",
+    "image": "",
+    "random": false,
+    "actors": [],
+    "conditions": [],
+    "effects": [],
+    "options": [
+      {
+        "text": "プロモーション戦略を分析する",
+        "tooltip": "競争相手の動向を見張る。",
+        "effects": [],
+        "SNS": [
+          {
+            "poster": "M_HC_YA",
+            "text": "アルバム戦線が一気に本気モードになったな。みんな同時に出しすぎだろ"
+          }
+        ],
+        "result": {
+          "description": "広告、ティザー、チャート更新をすべて集めるようスタッフに指示した。そこから学べるなら、競争も役に立つ。",
+          "delay": 0
+        },
+        "requirements": []
+      },
+      {
+        "text": "騒ぎを無視する",
+        "tooltip": "自分たちのグループに集中する。",
+        "effects": [],
+        "SNS": [],
+        "result": {
+          "description": "記事を閉じた。ライバルの見出しを眺めても、次の作品は良くならない。必要なのは仕事だ。",
+          "delay": 0
+        },
+        "requirements": []
+      }
+    ]
+  },
+  {
+    "id": "caa_low_sales",
+    "title": "アルバムの売上が鈍化",
+    "description": "<blue>[album_title]</color>の最新チャート報告は、目を背けたくなる内容だった。今期の新規売上はわずか<blue>[album_sales]</color>枚。\n\n@actor_0@が心配そうに尋ねる。「みんな、もう次に気持ちが移ってしまったんでしょうか？」",
+    "image": "",
+    "random": false,
+    "actors": [
+      {
+        "name": "@actor_0@",
+        "type": "idol",
+        "conditions": []
+      }
+    ],
+    "conditions": [],
+    "effects": [],
+    "options": [
+      {
+        "text": "宣伝を強化する",
+        "tooltip": "まだ間に合ううちに、アルバムをさらに売り込む。",
+        "effects": [],
+        "SNS": [
+          {
+            "poster": "F_C_T",
+            "text": "最近アルバムの追加プロモーション、そこら中で見かける……まあ、文句はないけど"
+          }
+        ],
+        "result": {
+          "description": "マーケティングチームが急いで新しい動画、インタビュー、SNS投稿を用意した。流れを変えられるかどうかは、まだわからない。",
+          "delay": 0
+        },
+        "requirements": []
+      },
+      {
+        "text": "辛抱強く待つ",
+        "tooltip": "アルバムが自然にリスナーへ届くのを待つ。",
+        "effects": [],
+        "SNS": [],
+        "result": {
+          "description": "慌てないことにした。すべての作品がすぐに大ヒットするとは限らない。時間をかけて伸びるものもある。",
+          "delay": 0
+        },
+        "requirements": []
+      }
+    ]
+  },
+  {
+    "id": "caa_album_gone_wrong",
+    "title": "アルバム展開が裏目に",
+    "description": "<blue>[album_title]</color>の展開が大きく狂ってしまった。勢いは予想をはるかに上回る速さで失われ、スタッフは原因をめぐって言い争っている。\n\nついに@actor_0@が、誰もが避けていた質問を口にした。「まだ立て直せますか？」",
+    "image": "",
+    "random": false,
+    "actors": [
+      {
+        "name": "@actor_0@",
+        "type": "idol",
+        "conditions": []
+      }
+    ],
+    "conditions": [],
+    "effects": [],
+    "options": [
+      {
+        "text": "緊急会議を招集する",
+        "tooltip": "悪化する前にプロモーション計画を練り直す。",
+        "effects": [],
+        "SNS": [],
+        "result": {
+          "description": "すべての部署が会議室に集められた。深夜になる頃には、ホワイトボードは取り消し線だらけの計画と、まったく新しい立て直し策で埋め尽くされていた。",
+          "delay": 0
+        },
+        "requirements": []
+      },
+      {
+        "text": "損失を受け入れ、態勢を立て直す",
+        "tooltip": "代わりに次のリリースを守る。",
+        "effects": [],
+        "SNS": [],
+        "result": {
+          "description": "成果の出ないキャンペーンにこれ以上資源を投じるのをやめた。痛手ではあるが、チームは次に何をすべきか考え始めた。",
+          "delay": 0
+        },
+        "requirements": []
+      }
+    ]
+  },
+  {
+    "id": "caa_celebration_party",
+    "title": "アルバム発売記念パーティー",
+    "description": "<blue>[album_title]</color>のおかげで、<blue>[album_group]</color>には祝う理由ができた。チャート成績は好調で、スタッフたちはどんなパーティーにするか早くも尋ねている。\n\n@actor_0@は、答えが「盛大なパーティー」になることを明らかに期待している。",
+    "image": "",
+    "random": false,
+    "actors": [
+      {
+        "name": "@actor_0@",
+        "type": "idol",
+        "conditions": []
+      }
+    ],
+    "conditions": [],
+    "effects": [],
+    "options": [
+      {
+        "text": "盛大なパーティーを開く",
+        "tooltip": "みんなで成功を祝おう。",
+        "effects": [],
+        "SNS": [
+          {
+            "poster": "F_HC_YA",
+            "text": "アルバムのパーティー写真見た？？みんなすっごく幸せそうなんだけど"
+          }
+        ],
+        "result": {
+          "description": "一晩だけ、オフィスがパーティー会場に変わった。チームは食べすぎるほど食べ、撮りすぎるほど写真を撮り、次の締め切りなど存在しないかのように祝った。",
+          "delay": 0
+        },
+        "requirements": []
+      },
+      {
+        "text": "内輪だけで祝う",
+        "tooltip": "チームとこぢんまりした夕食会を開く。",
+        "effects": [],
+        "SNS": [],
+        "result": {
+          "description": "代わりに静かな夕食会を予約した。マスコミもカメラもなし。このアルバムを形にした人たちだけだ。",
+          "delay": 0
+        },
+        "requirements": []
+      },
+      {
+        "text": "予算を温存する",
+        "tooltip": "次の節目までお祝いは取っておく。",
+        "effects": [],
+        "SNS": [],
+        "result": {
+          "description": "お祝いはまた今度と約束した。経理チームは大喜び。アイドルたちは……そうでもない。",
+          "delay": 0
+        },
+        "requirements": []
+      }
+    ]
+  },
+  {
+    "id": "caa_showcase",
+    "title": "アルバム・ショーケースのチャンス",
+    "description": "<blue>[album_title]</color>への注目は、単独ショーケースを開けるほど高まっている。プロモーターから会場の提供を受けた一方、メディアチームはライブ配信ならさらに多くのファンに届けられると主張している。\n\n@actor_0@は、どちらに決まってもすぐにパフォーマンスできそうだ。",
+    "image": "",
+    "random": false,
+    "actors": [
+      {
+        "name": "@actor_0@",
+        "type": "idol",
+        "conditions": []
+      }
+    ],
+    "conditions": [],
+    "effects": [],
+    "options": [
+      {
+        "text": "ライブ・ショーケースを開催する",
+        "tooltip": "アルバムをステージで披露する。",
+        "effects": [],
+        "SNS": [
+          {
+            "poster": "M_C_YA",
+            "text": "アルバムのショーケース最高すぎた。あの曲を生で聴いたら全部変わった"
+          }
+        ],
+        "result": {
+          "description": "会場は予想よりも早く完売した。一晩だけ、アルバムはチャート上の数字ではなく、会場いっぱいに響くファンの歌声になった。",
+          "delay": 0
+        },
+        "requirements": []
+      },
+      {
+        "text": "配信ショーケースを開催する",
+        "tooltip": "世界中のファンに届ける。",
+        "effects": [],
+        "SNS": [
+          {
+            "poster": "F_C_T",
+            "text": "ショーケース配信してくれてありがとう！！海外ファンがついに報われた"
+          }
+        ],
+        "result": {
+          "description": "カメラ、照明、チャットのメッセージがスタジオを埋め尽くした。観客の姿は見えないが、視聴者数は伸び続けている。",
+          "delay": 0
+        },
+        "requirements": []
+      },
+      {
+        "text": "ショーケースを見送る",
+        "tooltip": "スケジュールに余裕を残す。",
+        "effects": [],
+        "SNS": [],
+        "result": {
+          "description": "オファーを断った。グループは代わりに、通常の出演を通じてプロモーションを続けた。",
+          "delay": 0
+        },
+        "requirements": []
+      }
+    ]
+  }
+]

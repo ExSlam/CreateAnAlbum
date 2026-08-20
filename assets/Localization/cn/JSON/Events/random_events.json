@@ -1,0 +1,288 @@
+[
+  {
+    "id": "caa_first_album",
+    "title": "我们的首张专辑",
+    "description": "办公室里一片沸腾。<blue>[album_group]</color> 发行了她们的首张专辑——<blue>[album_title]</color>。\n\n@actor_0@ 在门口迟迟不肯离开，想藏住笑容却怎么也藏不住。『制作人……我们真的做到了。一张专辑。真正的专辑。』",
+    "image": "",
+    "random": false,
+    "actors": [
+      {
+        "name": "@actor_0@",
+        "type": "idol",
+        "conditions": []
+      }
+    ],
+    "conditions": [],
+    "effects": [],
+    "options": [
+      {
+        "text": "和组合一起庆祝",
+        "tooltip": "大家一起纪念这个里程碑。",
+        "effects": [],
+        "SNS": [
+          {
+            "poster": "F_C_YA",
+            "text": "首张专辑庆功会也太可爱了吧，她们真的为此付出了好多！！"
+          }
+        ],
+        "result": {
+          "description": "你把所有人叫到休息室。便宜的蛋糕、吵闹的音乐和疲惫的笑容，将发行日变成了一段谁都不愿结束的回忆。",
+          "delay": 0
+        },
+        "requirements": []
+      },
+      {
+        "text": "让团队保持专注",
+        "tooltip": "发行只是一个开始。",
+        "effects": [],
+        "SNS": [],
+        "result": {
+          "description": "你祝贺了团队，随后提醒大家，榜单竞争现在才刚刚开始。兴奋的气氛逐渐沉淀成坚定的干劲。",
+          "delay": 0
+        },
+        "requirements": []
+      }
+    ]
+  },
+  {
+    "id": "caa_rival_first_album",
+    "title": "竞争对手进军专辑市场",
+    "description": "各大资讯平台同时传来业界新闻：<blue>[album_rival]</color> 发行了新专辑 <blue>[album_title]</color>。\n\n对方的发行企划成熟，粉丝声势浩大，专辑榜顿时显得拥挤了许多。",
+    "image": "",
+    "random": false,
+    "actors": [],
+    "conditions": [],
+    "effects": [],
+    "options": [
+      {
+        "text": "研究对方的宣传方案",
+        "tooltip": "密切关注竞争对手。",
+        "effects": [],
+        "SNS": [
+          {
+            "poster": "M_HC_YA",
+            "text": "专辑季一下子动真格了，大家居然都赶在一起发片"
+          }
+        ],
+        "result": {
+          "description": "你让员工收集所有能找到的广告、预告和榜单更新。只要善于学习，竞争也能成为助力。",
+          "delay": 0
+        },
+        "requirements": []
+      },
+      {
+        "text": "无视外界喧嚣",
+        "tooltip": "专注于自己的组合。",
+        "effects": [],
+        "SNS": [],
+        "result": {
+          "description": "你关掉了新闻。竞争对手的头条不会让你的下一张唱片变得更好——努力才会。",
+          "delay": 0
+        },
+        "requirements": []
+      }
+    ]
+  },
+  {
+    "id": "caa_low_sales",
+    "title": "专辑销量正在放缓",
+    "description": "<blue>[album_title]</color> 最新一期的榜单报告读起来令人不安：本期仅有 <blue>[album_sales]</color> 份新增销量。\n\n@actor_0@ 忧心忡忡地问：『你觉得大家是不是已经不再关注我们了？』",
+    "image": "",
+    "random": false,
+    "actors": [
+      {
+        "name": "@actor_0@",
+        "type": "idol",
+        "conditions": []
+      }
+    ],
+    "conditions": [],
+    "effects": [],
+    "options": [
+      {
+        "text": "加大宣传力度",
+        "tooltip": "趁现在还来得及，加大专辑宣传。",
+        "effects": [],
+        "SNS": [
+          {
+            "poster": "F_C_T",
+            "text": "最近额外的专辑宣传真是铺天盖地……不过我可没在抱怨"
+          }
+        ],
+        "result": {
+          "description": "宣传团队紧急赶制了新短片、采访和社交媒体内容。能否扭转趋势，还有待观察。",
+          "delay": 0
+        },
+        "requirements": []
+      },
+      {
+        "text": "保持耐心",
+        "tooltip": "让专辑自然找到自己的听众。",
+        "effects": [],
+        "SNS": [],
+        "result": {
+          "description": "你决定不惊慌。不是每张唱片都必须立刻爆红——有些作品会慢慢积累人气。",
+          "delay": 0
+        },
+        "requirements": []
+      }
+    ]
+  },
+  {
+    "id": "caa_album_gone_wrong",
+    "title": "专辑发行企划出了问题",
+    "description": "<blue>[album_title]</color> 的发行企划严重偏离了正轨。势头下滑的速度远超预期，员工们正为问题究竟出在哪里争论不休。\n\n@actor_0@ 终于问出了所有人都在回避的问题：『我们还能救回来吗？』",
+    "image": "",
+    "random": false,
+    "actors": [
+      {
+        "name": "@actor_0@",
+        "type": "idol",
+        "conditions": []
+      }
+    ],
+    "conditions": [],
+    "effects": [],
+    "options": [
+      {
+        "text": "紧急召集会议",
+        "tooltip": "在情况变得更糟前重新制定发行企划。",
+        "effects": [],
+        "SNS": [],
+        "result": {
+          "description": "所有部门都被叫进会议室。到了午夜，白板上布满被划掉的方案，以及一套全新的挽救策略。",
+          "delay": 0
+        },
+        "requirements": []
+      },
+      {
+        "text": "控制损失，重整旗鼓",
+        "tooltip": "转而保障下一次发行。",
+        "effects": [],
+        "SNS": [],
+        "result": {
+          "description": "你不再把资源投入这场毫无成效的宣传活动。虽然很难受，但团队开始思考下一步该怎么走。",
+          "delay": 0
+        },
+        "requirements": []
+      }
+    ]
+  },
+  {
+    "id": "caa_celebration_party",
+    "title": "专辑庆功会",
+    "description": "<blue>[album_title]</color> 给了 <blue>[album_group]</color> 一个值得庆祝的理由。榜单成绩相当亮眼，员工们已经开始询问你想办一场怎样的派对。\n\n@actor_0@ 显然非常希望答案是『一场盛大的派对』。",
+    "image": "",
+    "random": false,
+    "actors": [
+      {
+        "name": "@actor_0@",
+        "type": "idol",
+        "conditions": []
+      }
+    ],
+    "conditions": [],
+    "effects": [],
+    "options": [
+      {
+        "text": "举办盛大派对",
+        "tooltip": "让所有人尽情享受胜利。",
+        "effects": [],
+        "SNS": [
+          {
+            "poster": "F_HC_YA",
+            "text": "专辑庆功会的照片？？大家看起来都好开心啊啊啊"
+          }
+        ],
+        "result": {
+          "description": "办公室有一晚变成了派对会场。团队吃得太多、拍了太多照片，庆祝得仿佛接下来根本没有工作期限。",
+          "delay": 0
+        },
+        "requirements": []
+      },
+      {
+        "text": "小范围庆祝",
+        "tooltip": "和团队一起吃顿简单的晚餐。",
+        "effects": [],
+        "SNS": [],
+        "result": {
+          "description": "你改为预订了一场安静的晚餐。没有媒体，没有镜头——只有让这张专辑成为现实的人们。",
+          "delay": 0
+        },
+        "requirements": []
+      },
+      {
+        "text": "节省预算",
+        "tooltip": "等到下一个里程碑再庆祝。",
+        "effects": [],
+        "SNS": [],
+        "result": {
+          "description": "你承诺以后会庆祝。财务团队欣喜若狂，偶像们就……没那么高兴了。",
+          "delay": 0
+        },
+        "requirements": []
+      }
+    ]
+  },
+  {
+    "id": "caa_showcase",
+    "title": "举办专辑展示会的机会",
+    "description": "<blue>[album_title]</color> 的热度足以支撑一场专门的展示会。一位主办方愿意提供场地，媒体团队则认为直播能触达更多粉丝。\n\n无论选择哪种方式，@actor_0@ 看起来都已准备好上台表演。",
+    "image": "",
+    "random": false,
+    "actors": [
+      {
+        "name": "@actor_0@",
+        "type": "idol",
+        "conditions": []
+      }
+    ],
+    "conditions": [],
+    "effects": [],
+    "options": [
+      {
+        "text": "举办现场展示会",
+        "tooltip": "让这张专辑登上舞台。",
+        "effects": [],
+        "SNS": [
+          {
+            "poster": "M_C_YA",
+            "text": "专辑展示会真的太棒了，现场听到那些歌之后感觉一切都不一样了"
+          }
+        ],
+        "result": {
+          "description": "门票售罄的速度超出预期。这一晚，专辑不再只是榜单上的数字，而是一整个会场齐声合唱的人群。",
+          "delay": 0
+        },
+        "requirements": []
+      },
+      {
+        "text": "举办线上直播展示会",
+        "tooltip": "让各地的粉丝都能参与。",
+        "effects": [],
+        "SNS": [
+          {
+            "poster": "F_C_T",
+            "text": "谢谢你们直播展示会！！海外粉丝终于赢了一次"
+          }
+        ],
+        "result": {
+          "description": "摄像机、灯光和聊天消息充满了演播室。观众虽看不见，但直播人数仍在不断攀升。",
+          "delay": 0
+        },
+        "requirements": []
+      },
+      {
+        "text": "放弃举办展示会",
+        "tooltip": "腾出日程。",
+        "effects": [],
+        "SNS": [],
+        "result": {
+          "description": "你放弃了这个机会。组合改为继续通过常规活动进行宣传。",
+          "delay": 0
+        },
+        "requirements": []
+      }
+    ]
+  }
+]

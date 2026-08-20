@@ -1,0 +1,288 @@
+[
+  {
+    "id": "caa_first_album",
+    "title": "Nosso Primeiro Álbum",
+    "description": "O escritório está em polvorosa. <blue>[album_group]</color> lançou seu primeiro álbum, <blue>[album_title]</color>.\n\n@actor_0@ fica perto da porta, tentando esconder um sorriso sem sucesso. \"Presidente... nós conseguimos mesmo. Um álbum. Um álbum de verdade.\"",
+    "image": "",
+    "random": false,
+    "actors": [
+      {
+        "name": "@actor_0@",
+        "type": "idol",
+        "conditions": []
+      }
+    ],
+    "conditions": [],
+    "effects": [],
+    "options": [
+      {
+        "text": "Comemorar com o grupo",
+        "tooltip": "Celebrar esse marco em conjunto.",
+        "effects": [],
+        "SNS": [
+          {
+            "poster": "F_C_YA",
+            "text": "as comemorações do primeiro álbum são tão fofas, elas trabalharam muito para chegar até aqui!!"
+          }
+        ],
+        "result": {
+          "description": "Você reúne todo mundo na sala de descanso. Bolo barato, música alta e sorrisos cansados transformam o dia do lançamento em uma lembrança que ninguém quer deixar para trás.",
+          "delay": 0
+        },
+        "requirements": []
+      },
+      {
+        "text": "Manter a equipe concentrada",
+        "tooltip": "O lançamento é apenas o começo.",
+        "effects": [],
+        "SNS": [],
+        "result": {
+          "description": "Você parabeniza a equipe e lembra a todos que as posições nas paradas começam a mudar agora. O clima se transforma em uma empolgação determinada.",
+          "delay": 0
+        },
+        "requirements": []
+      }
+    ]
+  },
+  {
+    "id": "caa_rival_first_album",
+    "title": "A Concorrência Entra no Mercado de Álbuns",
+    "description": "A notícia se espalha por todos os canais da indústria: <blue>[album_rival]</color> lançou um novo álbum, <blue>[album_title]</color>.\n\nA divulgação é impecável, os fãs estão fazendo barulho e, de repente, a parada de álbuns parece muito mais disputada.",
+    "image": "",
+    "random": false,
+    "actors": [],
+    "conditions": [],
+    "effects": [],
+    "options": [
+      {
+        "text": "Estudar a divulgação rival",
+        "tooltip": "Ficar de olho na concorrência.",
+        "effects": [],
+        "SNS": [
+          {
+            "poster": "M_HC_YA",
+            "text": "a temporada de álbuns ficou séria, todo mundo está lançando ao mesmo tempo"
+          }
+        ],
+        "result": {
+          "description": "Você pede que a equipe reúna todos os anúncios, teasers e atualizações das paradas que conseguir encontrar. A concorrência é útil quando se aprende com ela.",
+          "delay": 0
+        },
+        "requirements": []
+      },
+      {
+        "text": "Ignorar o barulho",
+        "tooltip": "Concentrar-se nos seus próprios grupos.",
+        "effects": [],
+        "SNS": [],
+        "result": {
+          "description": "Você fecha a notícia. Manchetes sobre rivais não melhoram seu próximo disco; trabalho, sim.",
+          "delay": 0
+        },
+        "requirements": []
+      }
+    ]
+  },
+  {
+    "id": "caa_low_sales",
+    "title": "As Vendas do Álbum Estão Caindo",
+    "description": "O relatório mais recente de <blue>[album_title]</color> é desconfortável de ler: apenas <blue>[album_sales]</color> novas vendas neste período.\n\n@actor_0@ parece preocupada. \"Você acha que as pessoas já estão perdendo o interesse?\"",
+    "image": "",
+    "random": false,
+    "actors": [
+      {
+        "name": "@actor_0@",
+        "type": "idol",
+        "conditions": []
+      }
+    ],
+    "conditions": [],
+    "effects": [],
+    "options": [
+      {
+        "text": "Aumentar a divulgação",
+        "tooltip": "Promover mais o álbum enquanto ainda há tempo.",
+        "effects": [],
+        "SNS": [
+          {
+            "poster": "F_C_T",
+            "text": "as novas divulgações do álbum estão por toda parte ultimamente... não estou reclamando"
+          }
+        ],
+        "result": {
+          "description": "A equipe de marketing prepara às pressas novos clipes, entrevistas e publicações nas redes sociais. Resta saber se isso mudará a tendência.",
+          "delay": 0
+        },
+        "requirements": []
+      },
+      {
+        "text": "Ter paciência",
+        "tooltip": "Deixar o álbum encontrar seu público naturalmente.",
+        "effects": [],
+        "SNS": [],
+        "result": {
+          "description": "Você decide não entrar em pânico. Nem todo disco precisa estourar imediatamente; alguns crescem aos poucos.",
+          "delay": 0
+        },
+        "requirements": []
+      }
+    ]
+  },
+  {
+    "id": "caa_album_gone_wrong",
+    "title": "O Lançamento do Álbum Dá Errado",
+    "description": "Algo saiu muito errado com <blue>[album_title]</color>. O impulso desapareceu bem mais rápido do que o esperado, e a equipe está discutindo sobre o que deu errado.\n\n@actor_0@ finalmente faz a pergunta que todos estão evitando: \"Ainda podemos salvar o álbum?\"",
+    "image": "",
+    "random": false,
+    "actors": [
+      {
+        "name": "@actor_0@",
+        "type": "idol",
+        "conditions": []
+      }
+    ],
+    "conditions": [],
+    "effects": [],
+    "options": [
+      {
+        "text": "Convocar uma reunião de emergência",
+        "tooltip": "Refazer a estratégia antes que a situação piore.",
+        "effects": [],
+        "SNS": [],
+        "result": {
+          "description": "Todos os departamentos são convocados para a sala de reuniões. À meia-noite, o quadro branco está coberto de planos riscados e de uma estratégia de recuperação totalmente nova.",
+          "delay": 0
+        },
+        "requirements": []
+      },
+      {
+        "text": "Reduzir as perdas e se reorganizar",
+        "tooltip": "Proteger o próximo lançamento.",
+        "effects": [],
+        "SNS": [],
+        "result": {
+          "description": "Você para de gastar recursos em uma campanha que não está funcionando. É doloroso, mas a equipe começa a pensar no que vem a seguir.",
+          "delay": 0
+        },
+        "requirements": []
+      }
+    ]
+  },
+  {
+    "id": "caa_celebration_party",
+    "title": "Festa de Comemoração do Álbum",
+    "description": "<blue>[album_title]</color> deu a <blue>[album_group]</color> um motivo para comemorar. O resultado na parada é forte o bastante para a equipe já perguntar que tipo de festa você quer.\n\n@actor_0@ claramente espera que a resposta seja \"uma festa enorme\".",
+    "image": "",
+    "random": false,
+    "actors": [
+      {
+        "name": "@actor_0@",
+        "type": "idol",
+        "conditions": []
+      }
+    ],
+    "conditions": [],
+    "effects": [],
+    "options": [
+      {
+        "text": "Dar uma grande festa",
+        "tooltip": "Deixar todos aproveitarem a vitória.",
+        "effects": [],
+        "SNS": [
+          {
+            "poster": "F_HC_YA",
+            "text": "AS FOTOS DA FESTA DO ÁLBUM?? todo mundo parece tão feliz mds"
+          }
+        ],
+        "result": {
+          "description": "O escritório vira um salão de festas por uma noite. A equipe come demais, tira fotos demais e comemora como se o próximo prazo não existisse.",
+          "delay": 0
+        },
+        "requirements": []
+      },
+      {
+        "text": "Fazer algo mais íntimo",
+        "tooltip": "Um jantar menor com a equipe.",
+        "effects": [],
+        "SNS": [],
+        "result": {
+          "description": "Você reserva um jantar tranquilo. Sem imprensa, sem câmeras; apenas as pessoas que tornaram o álbum possível.",
+          "delay": 0
+        },
+        "requirements": []
+      },
+      {
+        "text": "Poupar o orçamento",
+        "tooltip": "Comemorar depois do próximo marco.",
+        "effects": [],
+        "SNS": [],
+        "result": {
+          "description": "Você promete que haverá uma comemoração mais tarde. A equipe financeira fica encantada. As idols... nem tanto.",
+          "delay": 0
+        },
+        "requirements": []
+      }
+    ]
+  },
+  {
+    "id": "caa_showcase",
+    "title": "Oportunidade de Showcase do Álbum",
+    "description": "A procura por <blue>[album_title]</color> está forte o bastante para um showcase exclusivo. Um produtor oferece um local, enquanto a equipe de mídia argumenta que uma transmissão ao vivo poderia alcançar ainda mais fãs.\n\n@actor_0@ parece pronta para se apresentar de qualquer jeito.",
+    "image": "",
+    "random": false,
+    "actors": [
+      {
+        "name": "@actor_0@",
+        "type": "idol",
+        "conditions": []
+      }
+    ],
+    "conditions": [],
+    "effects": [],
+    "options": [
+      {
+        "text": "Agendar um showcase presencial",
+        "tooltip": "Levar o álbum ao palco.",
+        "effects": [],
+        "SNS": [
+          {
+            "poster": "M_C_YA",
+            "text": "o showcase do álbum foi BOM DEMAIS, ouvir essas músicas ao vivo mudou tudo"
+          }
+        ],
+        "result": {
+          "description": "Os ingressos se esgotam mais rápido do que o esperado. Por uma noite, o álbum deixa de ser apenas números em uma parada e se transforma em uma sala cheia de pessoas cantando juntas.",
+          "delay": 0
+        },
+        "requirements": []
+      },
+      {
+        "text": "Fazer um showcase por transmissão",
+        "tooltip": "Alcançar fãs em todos os lugares.",
+        "effects": [],
+        "SNS": [
+          {
+            "poster": "F_C_T",
+            "text": "obrigada por transmitirem o showcase!! os fãs internacionais finalmente venceram"
+          }
+        ],
+        "result": {
+          "description": "Câmeras, luzes e mensagens do chat ocupam o estúdio. O público é invisível, mas o contador de espectadores não para de subir.",
+          "delay": 0
+        },
+        "requirements": []
+      },
+      {
+        "text": "Não fazer o showcase",
+        "tooltip": "Manter a agenda livre.",
+        "effects": [],
+        "SNS": [],
+        "result": {
+          "description": "Você recusa a proposta. O grupo continua a divulgação com aparições normais.",
+          "delay": 0
+        },
+        "requirements": []
+      }
+    ]
+  }
+]
