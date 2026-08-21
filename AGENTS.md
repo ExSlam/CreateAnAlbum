@@ -140,5 +140,3 @@ The live installation does not require the PDB, source files, project files, `bi
 - Target .NET Framework 4.6 (`net46`) to match Idol Manager and the working Cosmo Harmony projects.
 - Treat game, Unity, Harmony, and other runtime-provided assemblies as compile-time-only references (`Private="false"`).
 - A normal build must not deploy implicitly. Deployment is opt-in through `ModOutputDir` and must preserve the deployment shape above.
-- Validate `assets/info.json`, `assets/ModButtons/buttons.json`, and edited localization files before handoff.
-- When compilation is part of the available workflow, run clean Debug and Release builds. When a handoff is explicitly source-only, perform delimiter/syntax-oriented static checks and leave compilation and in-game verification to the receiving developer.
