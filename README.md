@@ -34,3 +34,7 @@ Run `dotnet build CreateAnAlbum.csproj -c Release`. The project uses the same sh
 
 ## Known Issues
 - Saving and loading sets album data to none
+
+## Planned Features
+1. Add a second row to Text Color to add primary colors like red, blue, green, orange with a square with icon for color palette to popup a color picker wheel color selector alongside hex code entering for selecting color in that popup (if possible with MUIP or plain Unity)
+2. Add a row similar to text color selection but for adding an opaque background to album title section (with None as an option as well) along with the Group Name background section if it's enabled in the settings row
