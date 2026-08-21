@@ -14,8 +14,10 @@ Create An Album (`com.jordanss.createanalbum`) is a Harmony mod for Idol Manager
 - RR is discovered once per gameplay session from the loaded `rivalsreborn` assembly plus Harmony owner `rivalsreborn`, then accessed by reflection.
 - A missing/disabled/failed RR bridge is latched for that gameplay session. It is reset only after returning to the main menu, where the player can actually change enabled mods.
 - Album never calls `RivalsReborn.Portraits.Pump()`. Current RR owns its portrait pump itself.
-- Create, Library, Detail and Chart UI roots are registered with Idol Manager's vanilla `PopupManager` so the game owns queueing, pause/resume, background blur/darken and input blocking.
-- Album UI controls are instantiated from named shipped MUIP/game Resources such as `button/basic/Standard`, `input field/Input Field - Standard (Middle)`, `scrollbar/Scrollbar`, and `fonts & materials/LiberationSans SDF`. No live vanilla control/font cloning is used.
+- Create, Library, Detail, Chart and automatic chart-performance UI roots are registered with Idol Manager's vanilla `PopupManager` so the game owns queueing, pause/resume, background blur/darken and input blocking.
+- Album UI controls use shipped MUIP/game resources plus the vanilla Settings action buttons and producer-list slider templates. Confirm/destructive commands retain the game's green/red sliced sprites and white labels; light input fields use dark text.
+- Popup panels use compact centered dimensions, fixed headers and footers, masked scrolling bodies or lists, and the game-selected legacy/TMP font where available.
+- Every completed 14-day album chart period opens a localized performance report and awards the restored fan gain based on that period's player-album sales.
 - The small `AlbumUiResources` helper is embedded in this assembly. There is no dependency on the standalone IM UI Framework mod.
 
 ## Saving
@@ -23,6 +25,8 @@ Create An Album (`com.jordanss.createanalbum`) is a Harmony mod for Idol Manager
 Album mutations mark the Album sidecar **dirty** in memory. `SaveManager.SaveEvent` performs the actual sidecar write. Quitting gameplay without an Idol Manager save therefore does not intentionally commit new Album-only state.
 
 Sidecar writes use a temporary file and replacement/copy fallback. Save IDs preserve Idol Manager's complete save-folder identity. A legacy suffix-stripped Album sidecar is copied into the exact save-specific filename on first load when possible.
+
+The per-save album chart cycle anchor is stored in the same sidecar so restarting or reloading cannot postpone the next performance report.
 
 ## Building
 
