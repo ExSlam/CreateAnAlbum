@@ -31,3 +31,6 @@ The per-save album chart cycle anchor is stored in the same sidecar so restartin
 ## Building
 
 Run `dotnet build CreateAnAlbum.csproj -c Release`. The project uses the same shared .NET 4.6 and game-reference layout as the Cosmo Harmony mods; see [BUILDING.md](BUILDING.md) for build, packaging, and installation details.
+
+## Known Issues
+- Saving and loading sets album data to none
