@@ -426,30 +426,41 @@ namespace CreateAnAlbumGroupRules
             List<singles._single> selectedSongs =
                 GetField<List<singles._single>>(popup, "selectedSongs");
 
-            GameObject viewport = new GameObject("SongSelectorViewport");
-            viewport.transform.SetParent(content.transform, false);
+            GameObject scrollRoot = new GameObject("SongSelectorScrollRoot");
+            scrollRoot.transform.SetParent(content.transform, false);
 
-            RectTransform vr = viewport.AddComponent<RectTransform>();
-            vr.anchorMin = new Vector2(0, 1);
-            vr.anchorMax = new Vector2(0, 1);
-            vr.pivot = new Vector2(0, 1);
-            vr.sizeDelta = new Vector2(680, 205);
-            vr.anchoredPosition = new Vector2(120, -203);
+            RectTransform scrollRootRect = scrollRoot.AddComponent<RectTransform>();
+            scrollRootRect.anchorMin = new Vector2(0, 1);
+            scrollRootRect.anchorMax = new Vector2(0, 1);
+            scrollRootRect.pivot = new Vector2(0, 1);
+            scrollRootRect.sizeDelta = new Vector2(680, 205);
+            scrollRootRect.anchoredPosition = new Vector2(120, -203);
 
-            Image bg = viewport.AddComponent<Image>();
+            Image bg = scrollRoot.AddComponent<Image>();
             bg.color = new Color(0.985f, 0.985f, 0.992f);
 
-            Outline outl = viewport.AddComponent<Outline>();
+            Outline outl = scrollRoot.AddComponent<Outline>();
             outl.effectColor = new Color(0.82f, 0.82f, 0.88f);
             outl.effectDistance = new Vector2(1, -1);
 
-            viewport.AddComponent<RectMask2D>();
-
-            ScrollRect scroll = viewport.AddComponent<ScrollRect>();
+            ScrollRect scroll = scrollRoot.AddComponent<ScrollRect>();
             scroll.horizontal = false;
             scroll.vertical = true;
             scroll.movementType = ScrollRect.MovementType.Clamped;
             scroll.scrollSensitivity = 28f;
+
+            GameObject viewport = new GameObject("SongSelectorViewport");
+            viewport.transform.SetParent(scrollRoot.transform, false);
+
+            RectTransform vr = viewport.AddComponent<RectTransform>();
+            vr.anchorMin = Vector2.zero;
+            vr.anchorMax = Vector2.one;
+            vr.offsetMin = Vector2.zero;
+            vr.offsetMax = Vector2.zero;
+
+            Image viewportImage = viewport.AddComponent<Image>();
+            viewportImage.color = Color.clear;
+            viewport.AddComponent<RectMask2D>();
 
             GameObject listObj = new GameObject("SongList");
             listObj.transform.SetParent(viewport.transform, false);
@@ -465,6 +476,11 @@ namespace CreateAnAlbumGroupRules
 
             scroll.viewport = vr;
             scroll.content = listRT;
+            AlbumUiResources.AttachVanillaListScrollIndicator(
+                scrollRoot.transform,
+                scroll,
+                "SongSelectorScrollIndicator"
+            );
 
             if (songs.Count == 0)
             {
@@ -502,9 +518,9 @@ namespace CreateAnAlbumGroupRules
                 br.anchorMin = new Vector2(0, 1);
                 br.anchorMax = new Vector2(0, 1);
                 br.pivot = new Vector2(0, 1);
-                br.sizeDelta = new Vector2(316, 32);
+                br.sizeDelta = new Vector2(300, 32);
                 br.anchoredPosition = new Vector2(
-                    12 + (col * 328),
+                    12 + (col * 312),
                     -8 - (row * 38)
                 );
 
@@ -535,7 +551,7 @@ namespace CreateAnAlbumGroupRules
                         ? new Color(0.27f, 0.56f, 0.34f)
                         : new Color(0.28f, 0.27f, 0.34f),
                     new Vector2(10, 0),
-                    new Vector2(270, 32),
+                    new Vector2(252, 32),
                     TextAnchor.MiddleLeft
                 );
 
@@ -548,7 +564,7 @@ namespace CreateAnAlbumGroupRules
                         13,
                         FontStyle.Bold,
                         new Color(0.28f, 0.64f, 0.38f),
-                        new Vector2(284, 0),
+                        new Vector2(268, 0),
                         new Vector2(24, 32),
                         TextAnchor.MiddleCenter
                     );
@@ -608,6 +624,10 @@ namespace CreateAnAlbumGroupRules
 
             Groups._group group = GetSelectedGroup(popup);
             List<data_girls.girls> members = GetGroupMembers(group);
+            int memberRows = Mathf.Max(1, Mathf.CeilToInt(members.Count / 2f));
+            popup.EnsureContentHeight(
+                Mathf.Max(470f, 90f + memberRows * 72f)
+            );
 
             Dictionary<int, Image> memberBoxes =
                 GetField<Dictionary<int, Image>>(popup, "memberBoxes");
@@ -1058,8 +1078,19 @@ namespace CreateAnAlbumGroupRules
                 album.ID
             );
 
-            AlbumPopupHost.Close(AlbumPopupKind.Create);
-            SetField(popup, "panel", null);
+            AlbumPopupHost.Close(
+                AlbumPopupKind.Create,
+                delegate
+                {
+                    SetField(popup, "panel", null);
+                    MethodInfo reset = typeof(AlbumPopup).GetMethod(
+                        "ResetAlbumCreation",
+                        InstanceFlags
+                    );
+                    if (reset != null)
+                        reset.Invoke(popup, null);
+                }
+            );
 
             return true;
         }

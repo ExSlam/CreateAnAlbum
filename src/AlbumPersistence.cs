@@ -14,7 +14,8 @@ namespace Albummodelite
         [Serializable]
         private class AlbumSaveFile
         {
-            public int Version = 1;
+            public int Version = 2;
+            public long LastChartProcessedTicks;
             public List<AlbumSaveEntry> Albums =
                 new List<AlbumSaveEntry>();
         }
@@ -76,7 +77,10 @@ namespace Albummodelite
         private static bool pendingLoad;
         private static string pendingCandidateId = "";
         private static int pendingStableFrames;
+        private static int pendingRetryFrames;
         private static string loadedSaveId = "";
+        private static long lastChartProcessedTicks;
+        private static int loadGeneration;
 
         public static string CurrentSaveId
         {
@@ -108,10 +112,43 @@ namespace Albummodelite
             }
         }
 
+        internal static int LoadGeneration
+        {
+            get { return loadGeneration; }
+        }
+
+        internal static DateTime LastChartProcessedDate
+        {
+            get
+            {
+                if (lastChartProcessedTicks <= 0L)
+                    return DateTime.MinValue;
+
+                try
+                {
+                    return new DateTime(lastChartProcessedTicks).Date;
+                }
+                catch
+                {
+                    return DateTime.MinValue;
+                }
+            }
+        }
+
+        internal static void SetLastChartProcessedDate(DateTime value)
+        {
+            long ticks = value == DateTime.MinValue ? 0L : value.Date.Ticks;
+            if (lastChartProcessedTicks == ticks)
+                return;
+
+            lastChartProcessedTicks = ticks;
+            MarkDirty();
+        }
+
         public static void Initialize()
         {
             Debug.Log(
-                "[AlbumSave] *** PERSISTENCE v1.5 INITIALIZED ***"
+                "[AlbumSave] *** PERSISTENCE v4.0 INITIALIZED ***"
             );
 
             SaveManager.SaveEvent -= OnGameSave;
@@ -125,7 +162,10 @@ namespace Albummodelite
             pendingLoad = false;
             pendingCandidateId = "";
             pendingStableFrames = 0;
+            pendingRetryFrames = 0;
             loadedSaveId = "";
+            lastChartProcessedTicks = 0L;
+            loadGeneration = 0;
 
             Debug.Log(
                 "[AlbumSave] Save/load events registered."
@@ -145,7 +185,10 @@ namespace Albummodelite
             pendingLoad = false;
             pendingCandidateId = "";
             pendingStableFrames = 0;
+            pendingRetryFrames = 0;
             loadedSaveId = "";
+            lastChartProcessedTicks = 0L;
+            loadGeneration = 0;
         }
 
         private static void OnGameSave()
@@ -162,9 +205,12 @@ namespace Albummodelite
             if (!initialized)
                 return;
 
+            AlbumPopupHost.Reset();
+            AlbumChartUpdatePopup.ResetForSaveLoad();
             pendingLoad = true;
             pendingCandidateId = "";
             pendingStableFrames = 0;
+            pendingRetryFrames = 0;
             loadedSaveId = "";
 
             Debug.Log(
@@ -191,6 +237,13 @@ namespace Albummodelite
             {
                 pendingCandidateId = candidate;
                 pendingStableFrames = 1;
+                pendingRetryFrames = 0;
+            }
+
+            if (pendingRetryFrames > 0)
+            {
+                pendingRetryFrames--;
+                return;
             }
 
             if (pendingStableFrames < 10)
@@ -201,11 +254,16 @@ namespace Albummodelite
                 candidate
             );
 
-            LoadForSaveId(candidate);
+            if (!LoadForSaveId(candidate))
+            {
+                pendingRetryFrames = 60;
+                return;
+            }
 
             pendingLoad = false;
             pendingCandidateId = "";
             pendingStableFrames = 0;
+            pendingRetryFrames = 0;
         }
 
         public static bool EnsureCurrentSaveLoaded()
@@ -235,6 +293,14 @@ namespace Albummodelite
                 pendingLoad = false;
                 pendingCandidateId = "";
                 pendingStableFrames = 0;
+                pendingRetryFrames = 0;
+            }
+            else
+            {
+                pendingLoad = true;
+                pendingCandidateId = current;
+                pendingStableFrames = 0;
+                pendingRetryFrames = 60;
             }
 
             return result;
@@ -309,6 +375,7 @@ namespace Albummodelite
 
                 AlbumSaveFile file =
                     new AlbumSaveFile();
+                file.LastChartProcessedTicks = lastChartProcessedTicks;
 
                 foreach (AlbumData album in Albums.AlbumList)
                 {
@@ -379,8 +446,7 @@ namespace Albummodelite
                 if (!File.Exists(path))
                 {
                     Albums.AlbumList.Clear();
-                    loadedSaveId = saveId;
-                    dirty = false;
+                    CompleteLoadContext(saveId, 0L);
                     RivalAlbumManager.RebuildIdAllocator();
 
                     Debug.Log(
@@ -413,8 +479,7 @@ namespace Albummodelite
                     );
 
                     Albums.AlbumList.Clear();
-                    loadedSaveId = saveId;
-                    dirty = false;
+                    CompleteLoadContext(saveId, 0L);
                     RivalAlbumManager.RebuildIdAllocator();
                     return true;
                 }
@@ -459,8 +524,10 @@ namespace Albummodelite
 
                 Albums.DeduplicateInPlace();
 
-                loadedSaveId = saveId;
-                dirty = false;
+                CompleteLoadContext(
+                    saveId,
+                    file.LastChartProcessedTicks
+                );
                 RivalAlbumManager.RebuildIdAllocator();
 
                 Debug.Log(
@@ -501,6 +568,18 @@ namespace Albummodelite
 
                 return false;
             }
+        }
+
+        private static void CompleteLoadContext(
+            string saveId,
+            long chartProcessedTicks)
+        {
+            loadedSaveId = saveId;
+            lastChartProcessedTicks = chartProcessedTicks > 0L
+                ? chartProcessedTicks
+                : 0L;
+            dirty = false;
+            loadGeneration++;
         }
 
         private static string GetPathForSaveId(

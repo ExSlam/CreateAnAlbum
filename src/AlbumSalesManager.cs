@@ -12,12 +12,14 @@ namespace Albummodelite
         // Album chart processing happens every 14 in-game days.
         private DateTime lastProcessedDate = DateTime.MinValue;
         private string activeSaveId = "";
+        private int activeLoadGeneration = -1;
 
         private void Awake()
         {
             Instance = this;
             lastProcessedDate = DateTime.MinValue;
             activeSaveId = "";
+            activeLoadGeneration = -1;
 
             Debug.Log(
                 "[AlbumSales] Manager ready. Waiting for loaded save."
@@ -43,10 +45,21 @@ namespace Albummodelite
             string currentSave =
                 AlbumPersistence.CurrentSaveId;
 
-            if (activeSaveId != currentSave)
+            int loadGeneration = AlbumPersistence.LoadGeneration;
+            if (activeSaveId != currentSave ||
+                activeLoadGeneration != loadGeneration)
             {
                 activeSaveId = currentSave;
-                lastProcessedDate = currentDate;
+                activeLoadGeneration = loadGeneration;
+                lastProcessedDate = AlbumPersistence.LastChartProcessedDate;
+                if (lastProcessedDate == DateTime.MinValue ||
+                    lastProcessedDate > currentDate)
+                {
+                    lastProcessedDate = currentDate;
+                    AlbumPersistence.SetLastChartProcessedDate(
+                        lastProcessedDate
+                    );
+                }
 
                 RivalAlbumManager.EnsureInitialRivals();
 
@@ -55,7 +68,9 @@ namespace Albummodelite
 
                 Debug.Log(
                     "[AlbumSales] Initialized 14-day chart for " +
-                    activeSaveId
+                    activeSaveId +
+                    " at " +
+                    lastProcessedDate.ToString("yyyy-MM-dd")
                 );
 
                 return;
@@ -64,16 +79,39 @@ namespace Albummodelite
             if (lastProcessedDate == DateTime.MinValue)
             {
                 lastProcessedDate = currentDate;
+                AlbumPersistence.SetLastChartProcessedDate(
+                    lastProcessedDate
+                );
                 return;
             }
 
-            while ((currentDate - lastProcessedDate).TotalDays >= 14d)
+            if (currentDate < lastProcessedDate)
             {
-                lastProcessedDate =
-                    lastProcessedDate.AddDays(14);
-
-                ProcessWeek();
+                lastProcessedDate = currentDate;
+                AlbumPersistence.SetLastChartProcessedDate(
+                    lastProcessedDate
+                );
+                return;
             }
+
+            int safety = 0;
+            while ((currentDate - lastProcessedDate).TotalDays >= 14d &&
+                safety < 24)
+            {
+                DateTime cycleDate = lastProcessedDate.AddDays(14);
+                ProcessChartPeriod(cycleDate);
+                lastProcessedDate = cycleDate;
+                AlbumPersistence.SetLastChartProcessedDate(
+                    lastProcessedDate
+                );
+                safety++;
+            }
+        }
+
+        private void OnDestroy()
+        {
+            if (Instance == this)
+                Instance = null;
         }
 
         public static void RegisterNewAlbum(AlbumData album)
@@ -111,6 +149,14 @@ namespace Albummodelite
 
         public static void ProcessWeek()
         {
+            ProcessChartPeriod(staticVars.dateTime);
+        }
+
+        private static void ProcessChartPeriod(DateTime reportDate)
+        {
+            Dictionary<string, AlbumChartPeriodState> periodState =
+                AlbumChartPeriodPerformance.Capture();
+
             // New AI releases enter before this week's ranking is calculated.
             RivalAlbumManager.ReleaseWeeklyRivals();
 
@@ -147,8 +193,17 @@ namespace Albummodelite
 
             RebuildChartPositions();
 
+            List<AlbumChartPeriodResult> periodResults =
+                AlbumChartPeriodPerformance.Complete(periodState);
+
             Albums.DeduplicateInPlace();
             AlbumPersistence.MarkDirty();
+
+            AlbumChartUpdatePopup updatePopup = Instance != null
+                ? Instance.GetComponent<AlbumChartUpdatePopup>()
+                : UnityEngine.Object.FindObjectOfType<AlbumChartUpdatePopup>();
+            if (updatePopup != null)
+                updatePopup.Enqueue(periodResults, reportDate);
 
             Debug.Log(
                 "[AlbumSales] 14-day album chart processed. Albums: " +

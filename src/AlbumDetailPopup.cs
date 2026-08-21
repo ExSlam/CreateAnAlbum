@@ -8,24 +8,24 @@ namespace Albummodelite
     {
         private GameObject panel;
 
-        public void Open(AlbumData album)
+        public bool Open(AlbumData album)
         {
             if (album == null)
-                return;
+                return false;
 
             bool fromLibrary = AlbumPopupHost.IsOpen(AlbumPopupKind.Library);
             GameObject popupRoot = AlbumPopupHost.Prepare(AlbumPopupKind.Detail);
             if (popupRoot == null)
-                return;
+                return false;
 
             panel = new GameObject("AlbumDetailPopup");
             panel.transform.SetParent(popupRoot.transform, false);
 
             RectTransform pr = panel.AddComponent<RectTransform>();
-            pr.anchorMin = new Vector2(0.20f, 0.10f);
-            pr.anchorMax = new Vector2(0.80f, 0.90f);
-            pr.offsetMin = Vector2.zero;
-            pr.offsetMax = Vector2.zero;
+            AlbumUiResources.ConfigureCenteredPanel(
+                pr,
+                new Vector2(700f, 520f)
+            );
 
             Image bg = panel.AddComponent<Image>();
             bg.color = new Color(0.975f, 0.975f, 0.985f, 0.998f);
@@ -73,7 +73,7 @@ namespace Albummodelite
             AddInfoRow(panel.transform, x, 170, "Members", album.Members != null ? album.Members.Count.ToString() : "0");
             AddInfoRow(panel.transform, x, 205, "Sales", FormatNumber(album.Sales));
             AddInfoRow(panel.transform, x, 240, "Peak", album.PeakChartPosition > 0 ? "#" + album.PeakChartPosition : "—");
-            AddInfoRow(panel.transform, x, 275, "Weeks", album.WeeksOnChart.ToString());
+            AddInfoRow(panel.transform, x, 270, "Weeks", album.WeeksOnChart.ToString());
 
             CreateText(
                 panel.transform,
@@ -110,9 +110,9 @@ namespace Albummodelite
             CreateCloseButton();
 
             if (fromLibrary)
-                AlbumPopupHost.Transition(AlbumPopupKind.Library, AlbumPopupKind.Detail);
-            else
-                AlbumPopupHost.Open(AlbumPopupKind.Detail);
+                return AlbumPopupHost.Transition(AlbumPopupKind.Library, AlbumPopupKind.Detail);
+
+            return AlbumPopupHost.Open(AlbumPopupKind.Detail);
         }
 
         private void AddInfoRow(
@@ -154,7 +154,7 @@ namespace Albummodelite
                 panel.transform,
                 "Close",
                 "Close",
-                false,
+                AlbumButtonStyle.Destructive,
                 Close
             );
             if (obj == null)
@@ -170,8 +170,10 @@ namespace Albummodelite
 
         private void Close()
         {
-            AlbumPopupHost.Close(AlbumPopupKind.Detail);
-            panel = null;
+            AlbumPopupHost.Close(
+                AlbumPopupKind.Detail,
+                delegate { panel = null; }
+            );
         }
 
         private string FormatNumber(long value)

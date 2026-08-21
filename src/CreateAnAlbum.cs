@@ -21,6 +21,8 @@ namespace Albummodelite
 
             if (GetComponent<AlbumSalesManager>() == null)
                 gameObject.AddComponent<AlbumSalesManager>();
+            if (GetComponent<AlbumChartUpdatePopup>() == null)
+                gameObject.AddComponent<AlbumChartUpdatePopup>();
 
             Debug.Log("[CreateAlbum] Harmony runtime initialized.");
         }
@@ -48,36 +50,48 @@ namespace Albummodelite
                 OpenAlbumChart();
         }
 
-        public void OpenCreateAlbum()
+        public bool OpenCreateAlbum(bool queueBehindCurrentPopup = false)
         {
-            AlbumPersistence.EnsureCurrentSaveLoaded();
+            if (!AlbumPersistence.EnsureCurrentSaveLoaded())
+            {
+                Debug.LogWarning("[CreateAlbum] Album data is not ready for this save.");
+                return false;
+            }
 
             if (createPopup == null)
                 createPopup = GetComponent<AlbumPopup>() ?? gameObject.AddComponent<AlbumPopup>();
 
-            createPopup.Open();
+            return createPopup.Open(queueBehindCurrentPopup);
         }
 
-        public void OpenAlbumLibrary()
+        public bool OpenAlbumLibrary(bool queueBehindCurrentPopup = false)
         {
-            AlbumPersistence.EnsureCurrentSaveLoaded();
+            if (!AlbumPersistence.EnsureCurrentSaveLoaded())
+            {
+                Debug.LogWarning("[CreateAlbum] Album data is not ready for this save.");
+                return false;
+            }
             Albums.DeduplicateInPlace();
 
             if (libraryPopup == null)
                 libraryPopup = GetComponent<AlbumLibraryPopup>() ?? gameObject.AddComponent<AlbumLibraryPopup>();
 
-            libraryPopup.Open();
+            return libraryPopup.Open(queueBehindCurrentPopup);
         }
 
-        public void OpenAlbumChart()
+        public bool OpenAlbumChart(bool queueBehindCurrentPopup = false)
         {
-            AlbumPersistence.EnsureCurrentSaveLoaded();
+            if (!AlbumPersistence.EnsureCurrentSaveLoaded())
+            {
+                Debug.LogWarning("[CreateAlbum] Album data is not ready for this save.");
+                return false;
+            }
             Albums.DeduplicateInPlace();
 
             if (chartPopup == null)
                 chartPopup = GetComponent<AlbumChartPopup>() ?? gameObject.AddComponent<AlbumChartPopup>();
 
-            chartPopup.Open();
+            return chartPopup.Open(queueBehindCurrentPopup);
         }
     }
 

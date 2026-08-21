@@ -362,7 +362,7 @@ namespace CreateAnAlbumChartTrackEnhancements
                 ),
                 new Vector2(
                     x,
-                    -292f
+                    -296f
                 ),
                 new Vector2(
                     300f,
@@ -371,13 +371,69 @@ namespace CreateAnAlbumChartTrackEnhancements
                 TextAnchor.MiddleLeft
             );
 
+            GameObject scrollRoot =
+                new GameObject(
+                    "AlbumTrackScrollRoot"
+                );
+
+            scrollRoot.transform.SetParent(
+                parent,
+                false
+            );
+
+            RectTransform scrollRootRect =
+                scrollRoot.AddComponent<
+                    RectTransform>();
+
+            scrollRootRect.anchorMin =
+                new Vector2(
+                    0f,
+                    1f
+                );
+
+            scrollRootRect.anchorMax =
+                new Vector2(
+                    0f,
+                    1f
+                );
+
+            scrollRootRect.pivot =
+                new Vector2(
+                    0f,
+                    1f
+                );
+
+            scrollRootRect.sizeDelta =
+                new Vector2(
+                    315f,
+                    141f
+                );
+
+            scrollRootRect.anchoredPosition =
+                new Vector2(
+                    x,
+                    -322f
+                );
+
+            ScrollRect scroll =
+                scrollRoot.AddComponent<
+                    ScrollRect>();
+
+            scroll.horizontal = false;
+            scroll.vertical = true;
+            scroll.movementType =
+                ScrollRect.MovementType
+                    .Clamped;
+            scroll.scrollSensitivity =
+                25f;
+
             GameObject viewport =
                 new GameObject(
                     "AlbumTrackViewport"
                 );
 
             viewport.transform.SetParent(
-                parent,
+                scrollRoot.transform,
                 false
             );
 
@@ -385,35 +441,10 @@ namespace CreateAnAlbumChartTrackEnhancements
                 viewport.AddComponent<
                     RectTransform>();
 
-            vr.anchorMin =
-                new Vector2(
-                    0f,
-                    1f
-                );
-
-            vr.anchorMax =
-                new Vector2(
-                    0f,
-                    1f
-                );
-
-            vr.pivot =
-                new Vector2(
-                    0f,
-                    1f
-                );
-
-            vr.sizeDelta =
-                new Vector2(
-                    315f,
-                    155f
-                );
-
-            vr.anchoredPosition =
-                new Vector2(
-                    x,
-                    -318f
-                );
+            vr.anchorMin = Vector2.zero;
+            vr.anchorMax = Vector2.one;
+            vr.offsetMin = Vector2.zero;
+            vr.offsetMax = Vector2.zero;
 
             Image viewportBg =
                 viewport.AddComponent<Image>();
@@ -445,18 +476,6 @@ namespace CreateAnAlbumChartTrackEnhancements
 
             viewport.AddComponent<
                 RectMask2D>();
-
-            ScrollRect scroll =
-                viewport.AddComponent<
-                    ScrollRect>();
-
-            scroll.horizontal = false;
-            scroll.vertical = true;
-            scroll.movementType =
-                ScrollRect.MovementType
-                    .Clamped;
-            scroll.scrollSensitivity =
-                26f;
 
             GameObject content =
                 new GameObject(
@@ -513,6 +532,12 @@ namespace CreateAnAlbumChartTrackEnhancements
 
             scroll.viewport = vr;
             scroll.content = cr;
+            AlbumUiResources.AttachVanillaListScrollIndicator(
+                scrollRoot.transform,
+                scroll,
+                "AlbumTrackScrollIndicator"
+            );
+            scroll.verticalNormalizedPosition = 1f;
 
             if (count == 0)
             {
@@ -532,7 +557,7 @@ namespace CreateAnAlbumChartTrackEnhancements
                         -8f
                     ),
                     new Vector2(
-                        285f,
+                        270f,
                         28f
                     ),
                     TextAnchor.MiddleLeft
@@ -577,7 +602,7 @@ namespace CreateAnAlbumChartTrackEnhancements
                         y
                     ),
                     new Vector2(
-                        292f,
+                        270f,
                         21f
                     ),
                     TextAnchor.MiddleLeft
@@ -606,7 +631,7 @@ namespace CreateAnAlbumChartTrackEnhancements
                             y - 20f
                         ),
                         new Vector2(
-                            274f,
+                            252f,
                             18f
                         ),
                         TextAnchor.MiddleLeft

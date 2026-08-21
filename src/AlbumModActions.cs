@@ -15,14 +15,14 @@ namespace Albummodelite
                     UnityEngine.Object.FindObjectOfType<CreateAnAlbum>();
 
                 if (runtime == null)
-                {
-                    Debug.LogError(
-                        "[CreateAnAlbum] Runtime host was not found."
+                    throw new InvalidOperationException(
+                        "Create An Album is only available during gameplay."
                     );
-                    return;
-                }
 
-                runtime.OpenCreateAlbum();
+                if (!runtime.OpenCreateAlbum(true))
+                    throw new InvalidOperationException(
+                        "The Create Album popup request was rejected."
+                    );
             }
             catch (Exception ex)
             {
@@ -30,6 +30,7 @@ namespace Albummodelite
                     "[CreateAnAlbum] Create Album failed:\n" +
                     ex
                 );
+                throw;
             }
         }
 
@@ -43,14 +44,14 @@ namespace Albummodelite
                     UnityEngine.Object.FindObjectOfType<CreateAnAlbum>();
 
                 if (runtime == null)
-                {
-                    Debug.LogError(
-                        "[CreateAnAlbum] Runtime host was not found."
+                    throw new InvalidOperationException(
+                        "Create An Album is only available during gameplay."
                     );
-                    return;
-                }
 
-                runtime.OpenAlbumLibrary();
+                if (!runtime.OpenAlbumLibrary(true))
+                    throw new InvalidOperationException(
+                        "The Discography popup request was rejected."
+                    );
             }
             catch (Exception ex)
             {
@@ -58,6 +59,7 @@ namespace Albummodelite
                     "[CreateAnAlbum] Discography failed:\n" +
                     ex
                 );
+                throw;
             }
         }
 
@@ -71,18 +73,18 @@ namespace Albummodelite
                     UnityEngine.Object.FindObjectOfType<CreateAnAlbum>();
 
                 if (runtime == null)
-                {
-                    Debug.LogError(
-                        "[CreateAnAlbum] Runtime host was not found."
+                    throw new InvalidOperationException(
+                        "Create An Album is only available during gameplay."
                     );
-                    return;
-                }
 
                 Debug.Log(
                     "[CreateAnAlbum] Runtime host found."
                 );
 
-                runtime.OpenAlbumChart();
+                if (!runtime.OpenAlbumChart(true))
+                    throw new InvalidOperationException(
+                        "The Album Chart popup request was rejected."
+                    );
 
                 Debug.Log(
                     "[CreateAnAlbum] OpenAlbumChart call completed."
@@ -94,6 +96,7 @@ namespace Albummodelite
                     "[CreateAnAlbum] Album Chart failed:\n" +
                     ex
                 );
+                throw;
             }
         }
     }

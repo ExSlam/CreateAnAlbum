@@ -14,12 +14,11 @@ namespace CreateAnAlbumChartTrackEnhancements
 
         private static GameObject chartOverlay;
 
-        internal static void Toggle()
+        internal static bool Toggle(bool queueBehindCurrentPopup = false)
         {
             if (AlbumPopupHost.IsOpen(AlbumPopupKind.Chart))
             {
-                Close();
-                return;
+                return Close();
             }
 
             AlbumPersistenceBridge.EnsurePlayerAlbumsLoaded("Album Chart Open");
@@ -39,18 +38,26 @@ namespace CreateAnAlbumChartTrackEnhancements
             if (popupRoot == null)
             {
                 Debug.LogError("[AlbumChart] PopupManager host unavailable.");
-                return;
+                return false;
             }
 
             Build(popupRoot.transform);
-            AlbumPopupHost.Open(AlbumPopupKind.Chart);
+            return AlbumPopupHost.Open(
+                AlbumPopupKind.Chart,
+                queueBehindCurrentPopup
+            );
         }
 
-        internal static void Close()
+        internal static bool Close()
         {
-            AlbumPopupHost.Close(AlbumPopupKind.Chart);
-            chartOverlay = null;
-            Debug.Log("[AlbumChart] Closed.");
+            return AlbumPopupHost.Close(
+                AlbumPopupKind.Chart,
+                delegate
+                {
+                    chartOverlay = null;
+                    Debug.Log("[AlbumChart] Closed.");
+                }
+            );
         }
 
         private static void Build(Transform popupRoot)
@@ -72,23 +79,11 @@ namespace CreateAnAlbumChartTrackEnhancements
             RectTransform pr =
                 panel.AddComponent<RectTransform>();
 
-            pr.anchorMin =
-                new Vector2(
-                    0.119f,
-                    0.186f
-                );
-
-            pr.anchorMax =
-                new Vector2(
-                    0.876f,
-                    0.908f
-                );
-
-            pr.offsetMin =
-                Vector2.zero;
-
-            pr.offsetMax =
-                Vector2.zero;
+            AlbumUiResources.ConfigureCenteredPanel(
+                pr,
+                new Vector2(1000f, 480f)
+            );
+            pr.anchoredPosition = Vector2.zero;
 
             Image panelBg =
                 panel.AddComponent<Image>();
@@ -190,13 +185,55 @@ namespace CreateAnAlbumChartTrackEnhancements
                 TextAnchor.MiddleRight
             );
 
+            GameObject scrollRoot =
+                new GameObject(
+                    "AlbumChartScrollRoot"
+                );
+
+            scrollRoot.transform.SetParent(
+                panel.transform,
+                false
+            );
+
+            RectTransform scrollRootRect =
+                scrollRoot
+                    .AddComponent<RectTransform>();
+
+            scrollRootRect.anchorMin =
+                new Vector2(
+                    0.026f,
+                    0.13f
+                );
+
+            scrollRootRect.anchorMax =
+                new Vector2(
+                    0.967f,
+                    0.83f
+                );
+
+            scrollRootRect.offsetMin =
+                Vector2.zero;
+
+            scrollRootRect.offsetMax =
+                Vector2.zero;
+
+            ScrollRect scroll =
+                scrollRoot
+                    .AddComponent<ScrollRect>();
+
+            scroll.horizontal = false;
+            scroll.vertical = true;
+            scroll.movementType =
+                ScrollRect.MovementType.Clamped;
+            scroll.scrollSensitivity = 32f;
+
             GameObject viewport =
                 new GameObject(
                     "AlbumChartViewport"
                 );
 
             viewport.transform.SetParent(
-                panel.transform,
+                scrollRoot.transform,
                 false
             );
 
@@ -205,16 +242,10 @@ namespace CreateAnAlbumChartTrackEnhancements
                     .AddComponent<RectTransform>();
 
             vr.anchorMin =
-                new Vector2(
-                    0.026f,
-                    0.024f
-                );
+                Vector2.zero;
 
             vr.anchorMax =
-                new Vector2(
-                    0.967f,
-                    0.83f
-                );
+                Vector2.one;
 
             vr.offsetMin =
                 Vector2.zero;
@@ -234,16 +265,6 @@ namespace CreateAnAlbumChartTrackEnhancements
                 );
 
             viewport.AddComponent<RectMask2D>();
-
-            ScrollRect scroll =
-                viewport
-                    .AddComponent<ScrollRect>();
-
-            scroll.horizontal = false;
-            scroll.vertical = true;
-            scroll.movementType =
-                ScrollRect.MovementType.Clamped;
-            scroll.scrollSensitivity = 32f;
 
             GameObject list =
                 new GameObject(
@@ -302,6 +323,12 @@ namespace CreateAnAlbumChartTrackEnhancements
 
             scroll.viewport = vr;
             scroll.content = lr;
+            AlbumUiResources.AttachVanillaListScrollIndicator(
+                scrollRoot.transform,
+                scroll,
+                "AlbumChartScrollIndicator"
+            );
+            scroll.verticalNormalizedPosition = 1f;
 
             if (entries.Count == 0)
             {
@@ -343,18 +370,18 @@ namespace CreateAnAlbumChartTrackEnhancements
                 }
             }
 
-            // Same below-panel position as the Singles Chart screenshot.
+            // Keep the close control tied to the fixed chart panel on every aspect ratio.
             CreateButtonAnchored(
-                chartOverlay.transform,
+                panel.transform,
                 "Close",
                 "Close",
                 new Vector2(
-                    0.703f,
-                    0.105f
+                    0.40f,
+                    0.025f
                 ),
                 new Vector2(
-                    0.878f,
-                    0.160f
+                    0.60f,
+                    0.095f
                 ),
                 delegate
                 {
@@ -713,11 +740,19 @@ namespace CreateAnAlbumChartTrackEnhancements
             if (album == null ||
                 album.ChartPosition <= 0)
             {
-                return "—";
+                return AlbumLocalization.Get(
+                    "createanalbum.chart.out",
+                    "OUT"
+                );
             }
 
             if (album.PreviousChartPosition <= 0)
-                return "NEW";
+            {
+                return AlbumLocalization.Get(
+                    "createanalbum.chart.new",
+                    "NEW"
+                );
+            }
 
             if (album.ChartPosition <
                 album.PreviousChartPosition)
@@ -737,13 +772,16 @@ namespace CreateAnAlbumChartTrackEnhancements
                      album.PreviousChartPosition);
             }
 
-            return "—";
+            return AlbumLocalization.Get(
+                "createanalbum.chart.no_change",
+                "No change"
+            );
         }
 
         private static Color GetMovementColor(
             AlbumData album)
         {
-            if (album == null)
+            if (album == null || album.ChartPosition <= 0)
             {
                 return new Color(
                     0.50f,
@@ -911,7 +949,7 @@ namespace CreateAnAlbumChartTrackEnhancements
                 parent,
                 name,
                 label,
-                false,
+                AlbumButtonStyle.Destructive,
                 action
             );
             if (obj == null)

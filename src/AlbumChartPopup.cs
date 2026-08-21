@@ -5,9 +5,9 @@ namespace Albummodelite
 {
     public class AlbumChartPopup : MonoBehaviour
     {
-        public void Open()
+        public bool Open(bool queueBehindCurrentPopup = false)
         {
-            AlbumChartEnhancement.Toggle();
+            return AlbumChartEnhancement.Toggle(queueBehindCurrentPopup);
         }
     }
 }

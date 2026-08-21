@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -22,6 +23,10 @@ namespace Albummodelite
 
         private GameObject panel;
         private GameObject content;
+        private ScrollRect contentScroll;
+        private ScrollRect coverOptionsScroll;
+        private AlbumStep renderedStep;
+        private bool hasRenderedStep;
 
         public string AlbumTitle = "";
 
@@ -97,18 +102,19 @@ namespace Albummodelite
 
         private GameObject coverPreviewHolder;
 
-        public void Open()
+        public bool Open(bool queueBehindCurrentPopup = false)
         {
             if (AlbumPopupHost.IsOpen(AlbumPopupKind.Create))
             {
-                AlbumPopupHost.Close(AlbumPopupKind.Create);
-                panel = null;
-                return;
+                return AlbumPopupHost.Close(
+                    AlbumPopupKind.Create,
+                    delegate { panel = null; }
+                );
             }
 
             GameObject popupRoot = AlbumPopupHost.Prepare(AlbumPopupKind.Create);
             if (popupRoot == null)
-                return;
+                return false;
 
             Debug.Log("[CreateAlbum] Popup Open");
 
@@ -116,10 +122,10 @@ namespace Albummodelite
             panel.transform.SetParent(popupRoot.transform, false);
 
             RectTransform rect = panel.AddComponent<RectTransform>();
-            rect.anchorMin = new Vector2(0.055f, 0.055f);
-            rect.anchorMax = new Vector2(0.945f, 0.945f);
-            rect.offsetMin = Vector2.zero;
-            rect.offsetMax = Vector2.zero;
+            AlbumUiResources.ConfigureCenteredPanel(
+                rect,
+                new Vector2(1000f, 500f)
+            );
 
             Image bg = panel.AddComponent<Image>();
             bg.color = new Color(0.965f, 0.965f, 0.975f, 0.99f);
@@ -127,7 +133,10 @@ namespace Albummodelite
             DrawHeader();
             CreateContent();
             RefreshUI();
-            AlbumPopupHost.Open(AlbumPopupKind.Create);
+            return AlbumPopupHost.Open(
+                AlbumPopupKind.Create,
+                queueBehindCurrentPopup
+            );
         }
 
         private void DrawHeader()
@@ -198,22 +207,79 @@ namespace Albummodelite
         private void CreateContent()
         {
             if (content != null)
-                Destroy(content);
+                RetireUiObject(content);
+
+            GameObject scrollRoot = new GameObject("ContentScrollRoot");
+            scrollRoot.transform.SetParent(panel.transform, false);
+
+            RectTransform scrollRootRect = scrollRoot.AddComponent<RectTransform>();
+            scrollRootRect.anchorMin = Vector2.zero;
+            scrollRootRect.anchorMax = Vector2.one;
+            scrollRootRect.offsetMin = new Vector2(16f, 58f);
+            scrollRootRect.offsetMax = new Vector2(-16f, -98f);
+
+            contentScroll = scrollRoot.AddComponent<ScrollRect>();
+            contentScroll.horizontal = false;
+            contentScroll.vertical = true;
+            contentScroll.movementType = ScrollRect.MovementType.Clamped;
+            contentScroll.inertia = true;
+            contentScroll.decelerationRate = 0.135f;
+            contentScroll.scrollSensitivity = 25f;
+
+            GameObject viewport = new GameObject("ContentViewport");
+            viewport.transform.SetParent(scrollRoot.transform, false);
+
+            RectTransform viewportRect = viewport.AddComponent<RectTransform>();
+            viewportRect.anchorMin = Vector2.zero;
+            viewportRect.anchorMax = Vector2.one;
+            viewportRect.offsetMin = Vector2.zero;
+            viewportRect.offsetMax = Vector2.zero;
+
+            Image viewportImage = viewport.AddComponent<Image>();
+            viewportImage.color = Color.clear;
+            viewportImage.raycastTarget = true;
+            viewport.AddComponent<RectMask2D>();
 
             content = new GameObject("Content");
-            content.transform.SetParent(panel.transform, false);
+            content.transform.SetParent(viewport.transform, false);
 
             RectTransform rect = content.AddComponent<RectTransform>();
-            rect.anchorMin = Vector2.zero;
-            rect.anchorMax = Vector2.one;
-            rect.offsetMin = new Vector2(32, 66);
-            rect.offsetMax = new Vector2(-32, -100);
+            rect.anchorMin = new Vector2(0f, 1f);
+            rect.anchorMax = new Vector2(1f, 1f);
+            rect.pivot = new Vector2(0.5f, 1f);
+            rect.anchoredPosition = Vector2.zero;
+            rect.sizeDelta = new Vector2(0f, GetContentHeight());
+
+            contentScroll.viewport = viewportRect;
+            contentScroll.content = rect;
+            AlbumUiResources.AttachVanillaListScrollIndicator(
+                scrollRoot.transform,
+                contentScroll,
+                "ContentScrollIndicator"
+            );
+            contentScroll.verticalNormalizedPosition = 1f;
         }
 
         private void RefreshUI()
         {
+            bool preserveScroll = hasRenderedStep && renderedStep == step;
+            float contentScrollPosition = preserveScroll && contentScroll != null
+                ? Mathf.Clamp01(contentScroll.verticalNormalizedPosition)
+                : 1f;
+            float coverScrollPosition = preserveScroll &&
+                step == AlbumStep.Cover && coverOptionsScroll != null
+                    ? Mathf.Clamp01(coverOptionsScroll.verticalNormalizedPosition)
+                    : 1f;
+            coverOptionsScroll = null;
+
+            RectTransform contentRect = content != null
+                ? content.GetComponent<RectTransform>()
+                : null;
+            if (contentRect != null)
+                contentRect.sizeDelta = new Vector2(0f, GetContentHeight());
+
             foreach (Transform child in content.transform)
-                Destroy(child.gameObject);
+                RetireUiObject(child.gameObject);
 
             foreach (Transform child in panel.transform)
             {
@@ -222,16 +288,16 @@ namespace Albummodelite
                     child.name == "Continue" ||
                     child.name == "Create")
                 {
-                    Destroy(child.gameObject);
+                    RetireUiObject(child.gameObject);
                 }
             }
 
             // Refresh step header text because the current step changed.
-            for (int i = 0; i < 4; i++)
+            for (int i = panel.transform.childCount - 1; i >= 0; i--)
             {
-                Transform old = panel.transform.Find("Step_" + i);
-                if (old != null)
-                    Destroy(old.gameObject);
+                Transform old = panel.transform.GetChild(i);
+                if (old.name.StartsWith("Step_", StringComparison.Ordinal))
+                    RetireUiObject(old.gameObject);
             }
             DrawStepHeader();
 
@@ -255,6 +321,57 @@ namespace Albummodelite
             }
 
             DrawButtons();
+            Canvas.ForceUpdateCanvases();
+            if (contentScroll != null)
+            {
+                contentScroll.StopMovement();
+                contentScroll.verticalNormalizedPosition = contentScrollPosition;
+            }
+            if (coverOptionsScroll != null)
+            {
+                coverOptionsScroll.StopMovement();
+                coverOptionsScroll.verticalNormalizedPosition = coverScrollPosition;
+            }
+            renderedStep = step;
+            hasRenderedStep = true;
+            if (panel != null && panel.transform.parent != null)
+            {
+                AlbumPopupHost.ApplyLayerRecursively(
+                    panel,
+                    panel.transform.parent.gameObject.layer
+                );
+            }
+        }
+
+        private float GetContentHeight()
+        {
+            if (step == AlbumStep.Members)
+            {
+                int memberCount = 0;
+                try
+                {
+                    List<data_girls.girls> members = data_girls.GetActiveGirls();
+                    memberCount = members != null ? members.Count : 0;
+                }
+                catch
+                {
+                }
+
+                int rows = Mathf.Max(1, Mathf.CeilToInt(memberCount / 2f));
+                return Mathf.Max(470f, 90f + rows * 72f);
+            }
+
+            return step == AlbumStep.Cover ? 440f : 470f;
+        }
+
+        internal void EnsureContentHeight(float minimumHeight)
+        {
+            if (content == null)
+                return;
+
+            RectTransform rect = content.GetComponent<RectTransform>();
+            if (rect != null && rect.sizeDelta.y < minimumHeight)
+                rect.sizeDelta = new Vector2(rect.sizeDelta.x, minimumHeight);
         }
 
         private void DrawButtons()
@@ -272,9 +389,14 @@ namespace Albummodelite
 
         private void CancelAlbum()
         {
-            AlbumPopupHost.Close(AlbumPopupKind.Create);
-            panel = null;
-            ResetAlbumCreation();
+            AlbumPopupHost.Close(
+                AlbumPopupKind.Create,
+                delegate
+                {
+                    panel = null;
+                    ResetAlbumCreation();
+                }
+            );
         }
 
         private void Save()
@@ -374,9 +496,14 @@ namespace Albummodelite
                 album.ID
             );
 
-            AlbumPopupHost.Close(AlbumPopupKind.Create);
-            panel = null;
-            ResetAlbumCreation();
+            AlbumPopupHost.Close(
+                AlbumPopupKind.Create,
+                delegate
+                {
+                    panel = null;
+                    ResetAlbumCreation();
+                }
+            );
         }
 
         private int GenerateAlbumID()
@@ -416,17 +543,19 @@ namespace Albummodelite
                 TextAnchor.MiddleLeft
             );
 
+            GameObject inputRoot;
             albumTitleInput = AlbumUiResources.InstantiateInputField(
                 content.transform,
                 "AlbumTitleInput",
                 AlbumTitle,
                 "Enter album title...",
-                SetTitle
+                SetTitle,
+                out inputRoot
             );
 
-            if (albumTitleInput != null)
+            if (albumTitleInput != null && inputRoot != null)
             {
-                RectTransform ir = albumTitleInput.GetComponent<RectTransform>();
+                RectTransform ir = inputRoot.GetComponent<RectTransform>();
                 ir.anchorMin = new Vector2(0, 1);
                 ir.anchorMax = new Vector2(0, 1);
                 ir.pivot = new Vector2(0, 1);
@@ -478,30 +607,42 @@ namespace Albummodelite
                 .Where(s => s != null && !string.IsNullOrEmpty(s.title))
                 .ToList();
 
-            GameObject viewport = new GameObject("SongSelectorViewport");
-            viewport.transform.SetParent(content.transform, false);
+            GameObject scrollRoot = new GameObject("SongSelectorScroll");
+            scrollRoot.transform.SetParent(content.transform, false);
 
-            RectTransform vr = viewport.AddComponent<RectTransform>();
-            vr.anchorMin = new Vector2(0, 1);
-            vr.anchorMax = new Vector2(0, 1);
-            vr.pivot = new Vector2(0, 1);
-            vr.sizeDelta = new Vector2(680, 205);
-            vr.anchoredPosition = new Vector2(120, -203);
+            RectTransform scrollRootRect = scrollRoot.AddComponent<RectTransform>();
+            scrollRootRect.anchorMin = new Vector2(0, 1);
+            scrollRootRect.anchorMax = new Vector2(0, 1);
+            scrollRootRect.pivot = new Vector2(0, 1);
+            scrollRootRect.sizeDelta = new Vector2(680, 205);
+            scrollRootRect.anchoredPosition = new Vector2(120, -203);
 
-            Image bg = viewport.AddComponent<Image>();
+            Image bg = scrollRoot.AddComponent<Image>();
             bg.color = new Color(0.985f, 0.985f, 0.992f);
 
-            Outline outl = viewport.AddComponent<Outline>();
+            Outline outl = scrollRoot.AddComponent<Outline>();
             outl.effectColor = new Color(0.82f, 0.82f, 0.88f);
             outl.effectDistance = new Vector2(1, -1);
 
-            viewport.AddComponent<RectMask2D>();
-
-            ScrollRect scroll = viewport.AddComponent<ScrollRect>();
+            ScrollRect scroll = scrollRoot.AddComponent<ScrollRect>();
             scroll.horizontal = false;
             scroll.vertical = true;
             scroll.movementType = ScrollRect.MovementType.Clamped;
             scroll.scrollSensitivity = 28f;
+
+            GameObject viewport = new GameObject("Viewport");
+            viewport.transform.SetParent(scrollRoot.transform, false);
+
+            RectTransform vr = viewport.AddComponent<RectTransform>();
+            vr.anchorMin = Vector2.zero;
+            vr.anchorMax = Vector2.one;
+            vr.offsetMin = Vector2.zero;
+            vr.offsetMax = Vector2.zero;
+
+            Image viewportImage = viewport.AddComponent<Image>();
+            viewportImage.color = Color.clear;
+            viewportImage.raycastTarget = false;
+            viewport.AddComponent<RectMask2D>();
 
             GameObject listObj = new GameObject("SongList");
             listObj.transform.SetParent(viewport.transform, false);
@@ -517,6 +658,11 @@ namespace Albummodelite
 
             scroll.viewport = vr;
             scroll.content = listRT;
+            AlbumUiResources.AttachVanillaListScrollIndicator(
+                scrollRoot.transform,
+                scroll,
+                "SongSelectorScrollIndicator"
+            );
 
             if (songs.Count == 0)
             {
@@ -549,9 +695,9 @@ namespace Albummodelite
                 br.anchorMin = new Vector2(0, 1);
                 br.anchorMax = new Vector2(0, 1);
                 br.pivot = new Vector2(0, 1);
-                br.sizeDelta = new Vector2(316, 32);
+                br.sizeDelta = new Vector2(300, 32);
                 br.anchoredPosition = new Vector2(
-                    12 + (col * 328),
+                    12 + (col * 312),
                     -8 - (row * 38)
                 );
 
@@ -580,7 +726,7 @@ namespace Albummodelite
                         ? new Color(0.27f, 0.56f, 0.34f)
                         : new Color(0.28f, 0.27f, 0.34f),
                     new Vector2(10, 0),
-                    new Vector2(270, 32),
+                        new Vector2(252, 32),
                     TextAnchor.MiddleLeft
                 );
 
@@ -593,7 +739,7 @@ namespace Albummodelite
                         13,
                         FontStyle.Bold,
                         new Color(0.28f, 0.64f, 0.38f),
-                        new Vector2(284, 0),
+                        new Vector2(268, 0),
                         new Vector2(24, 32),
                         TextAnchor.MiddleCenter
                     );
@@ -811,34 +957,47 @@ namespace Albummodelite
 
         private Transform CreateCoverOptionsScroll()
         {
-            // Fixed viewport: only the left settings panel scrolls.
-            GameObject viewport = new GameObject("CoverOptionsViewport");
-            viewport.transform.SetParent(content.transform, false);
+            // Fixed surface: only the masked settings viewport scrolls.
+            GameObject scrollRoot = new GameObject("CoverOptionsScroll");
+            scrollRoot.transform.SetParent(content.transform, false);
 
-            RectTransform viewportRT = viewport.AddComponent<RectTransform>();
-            viewportRT.anchorMin = new Vector2(0, 1);
-            viewportRT.anchorMax = new Vector2(0, 1);
-            viewportRT.pivot = new Vector2(0, 1);
-            viewportRT.sizeDelta = new Vector2(335, 382);
-            viewportRT.anchoredPosition = new Vector2(0, -8);
+            RectTransform scrollRootRT = scrollRoot.AddComponent<RectTransform>();
+            scrollRootRT.anchorMin = new Vector2(0, 1);
+            scrollRootRT.anchorMax = new Vector2(0, 1);
+            scrollRootRT.pivot = new Vector2(0, 1);
+            scrollRootRT.sizeDelta = new Vector2(345, 382);
+            scrollRootRT.anchoredPosition = new Vector2(0, -8);
 
-            Image viewportBg = viewport.AddComponent<Image>();
+            Image viewportBg = scrollRoot.AddComponent<Image>();
             viewportBg.color = new Color(0.975f, 0.975f, 0.985f);
 
-            Outline viewportOutline = viewport.AddComponent<Outline>();
+            Outline viewportOutline = scrollRoot.AddComponent<Outline>();
             viewportOutline.effectColor = new Color(0.82f, 0.82f, 0.88f);
             viewportOutline.effectDistance = new Vector2(1, -1);
 
-            RectMask2D mask = viewport.AddComponent<RectMask2D>();
-            mask.padding = new Vector4(0, 0, 0, 0);
-
-            ScrollRect scroll = viewport.AddComponent<ScrollRect>();
+            ScrollRect scroll = scrollRoot.AddComponent<ScrollRect>();
+            coverOptionsScroll = scroll;
             scroll.horizontal = false;
             scroll.vertical = true;
             scroll.movementType = ScrollRect.MovementType.Clamped;
             scroll.inertia = true;
             scroll.decelerationRate = 0.135f;
             scroll.scrollSensitivity = 32f;
+
+            GameObject viewport = new GameObject("Viewport");
+            viewport.transform.SetParent(scrollRoot.transform, false);
+
+            RectTransform viewportRT = viewport.AddComponent<RectTransform>();
+            viewportRT.anchorMin = Vector2.zero;
+            viewportRT.anchorMax = Vector2.one;
+            viewportRT.offsetMin = Vector2.zero;
+            viewportRT.offsetMax = Vector2.zero;
+
+            Image viewportMaskImage = viewport.AddComponent<Image>();
+            viewportMaskImage.color = Color.clear;
+            viewportMaskImage.raycastTarget = false;
+            RectMask2D mask = viewport.AddComponent<RectMask2D>();
+            mask.padding = Vector4.zero;
 
             GameObject scrollContent = new GameObject("CoverOptionsContent");
             scrollContent.transform.SetParent(viewport.transform, false);
@@ -847,32 +1006,17 @@ namespace Albummodelite
             contentRT.anchorMin = new Vector2(0, 1);
             contentRT.anchorMax = new Vector2(1, 1);
             contentRT.pivot = new Vector2(0.5f, 1);
-            contentRT.sizeDelta = new Vector2(-16, 690);
+            contentRT.sizeDelta = new Vector2(0, 690);
             contentRT.anchoredPosition = Vector2.zero;
 
             scroll.viewport = viewportRT;
             scroll.content = contentRT;
 
-            // Use Idol Manager's shipped MUIP scrollbar Resource directly.
-            Scrollbar scrollbar = AlbumUiResources.InstantiateScrollbar(
-                viewport.transform,
-                "CoverOptionsScrollbar"
+            AlbumUiResources.AttachVanillaListScrollIndicator(
+                scrollRoot.transform,
+                scroll,
+                "CoverOptionsScrollIndicator"
             );
-
-            if (scrollbar != null)
-            {
-                RectTransform scrollbarRT = scrollbar.GetComponent<RectTransform>();
-                scrollbarRT.anchorMin = new Vector2(1, 0);
-                scrollbarRT.anchorMax = new Vector2(1, 1);
-                scrollbarRT.pivot = new Vector2(1, 0.5f);
-                scrollbarRT.sizeDelta = new Vector2(8, -10);
-                scrollbarRT.anchoredPosition = new Vector2(-3, 0);
-                scrollbar.direction = Scrollbar.Direction.BottomToTop;
-                scroll.verticalScrollbar = scrollbar;
-                scroll.verticalScrollbarVisibility =
-                    ScrollRect.ScrollbarVisibility.AutoHideAndExpandViewport;
-                scroll.verticalScrollbarSpacing = -2f;
-            }
 
             scroll.verticalNormalizedPosition = 1f;
 
@@ -1627,11 +1771,17 @@ namespace Albummodelite
         private void DrawLargeCoverPreview()
         {
             if (coverPreviewHolder != null)
-                Destroy(coverPreviewHolder);
+            {
+                RetireUiObject(coverPreviewHolder);
+                coverPreviewHolder = null;
+            }
 
-            Transform existing = content.transform.Find("CoverPreview");
-            if (existing != null)
-                Destroy(existing.gameObject);
+            for (int i = content.transform.childCount - 1; i >= 0; i--)
+            {
+                Transform existing = content.transform.GetChild(i);
+                if (existing.name == "CoverPreview")
+                    RetireUiObject(existing.gameObject);
+            }
 
             coverPreviewHolder = BuildAlbumCover(
                 content.transform,
@@ -1774,6 +1924,22 @@ namespace Albummodelite
             subtitleShadow.effectDistance = new Vector2(1, -1);
 
             return holder;
+        }
+
+        private void RetireUiObject(GameObject obj)
+        {
+            if (obj == null)
+                return;
+
+            obj.SetActive(false);
+            StartCoroutine(DestroyAfterUiDelay(obj));
+        }
+
+        private IEnumerator DestroyAfterUiDelay(GameObject obj)
+        {
+            yield return new WaitForSecondsRealtime(0.6f);
+            if (obj != null)
+                Destroy(obj);
         }
 
         private void AddCoverBottomAtmosphere(Transform parent, float size)
@@ -3120,6 +3286,7 @@ namespace Albummodelite
             r.pivot = new Vector2(0, 1);
             r.sizeDelta = size;
             r.anchoredPosition = position;
+            AlbumUiResources.SetButtonFontSize(obj, fontSize);
         }
 
         private void CreateText(
@@ -3199,7 +3366,13 @@ namespace Albummodelite
                 panel.transform,
                 text,
                 text,
-                cancel || text == "Back",
+                cancel
+                    ? AlbumButtonStyle.Destructive
+                    : (text == "Continue" || text == "Create")
+                        ? AlbumButtonStyle.Confirm
+                        : text == "Back"
+                            ? AlbumButtonStyle.Back
+                            : AlbumButtonStyle.Standard,
                 click
             );
             if (obj == null)
@@ -3217,6 +3390,9 @@ namespace Albummodelite
         private void ResetAlbumCreation()
         {
             step = AlbumStep.Info;
+            coverOptionsScroll = null;
+            renderedStep = AlbumStep.Info;
+            hasRenderedStep = false;
 
             AlbumTitle = "";
             albumTitleInput = null;

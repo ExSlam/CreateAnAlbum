@@ -11,12 +11,11 @@ namespace Albummodelite
         private GameObject panel;
         private GameObject content;
 
-        public void Open()
+        public bool Open(bool queueBehindCurrentPopup = false)
         {
             if (AlbumPopupHost.IsOpen(AlbumPopupKind.Library))
             {
-                Close();
-                return;
+                return RequestClose();
             }
 
             AlbumPersistence.EnsureCurrentSaveLoaded();
@@ -24,16 +23,16 @@ namespace Albummodelite
 
             GameObject popupRoot = AlbumPopupHost.Prepare(AlbumPopupKind.Library);
             if (popupRoot == null)
-                return;
+                return false;
 
             panel = new GameObject("AlbumLibraryPopup");
             panel.transform.SetParent(popupRoot.transform, false);
 
             RectTransform pr = panel.AddComponent<RectTransform>();
-            pr.anchorMin = new Vector2(0.06f, 0.06f);
-            pr.anchorMax = new Vector2(0.94f, 0.94f);
-            pr.offsetMin = Vector2.zero;
-            pr.offsetMax = Vector2.zero;
+            AlbumUiResources.ConfigureCenteredPanel(
+                pr,
+                new Vector2(960f, 500f)
+            );
 
             Image bg = panel.AddComponent<Image>();
             bg.color = new Color(0.965f, 0.965f, 0.975f, 0.995f);
@@ -41,7 +40,10 @@ namespace Albummodelite
             DrawHeader();
             DrawLibrary();
             DrawCloseButton();
-            AlbumPopupHost.Open(AlbumPopupKind.Library);
+            return AlbumPopupHost.Open(
+                AlbumPopupKind.Library,
+                queueBehindCurrentPopup
+            );
         }
 
         private void DrawHeader()
@@ -76,14 +78,30 @@ namespace Albummodelite
             List<AlbumData> libraryAlbums =
                 GetLibraryAlbums();
 
+            GameObject scrollRoot = new GameObject("LibraryScrollRoot");
+            scrollRoot.transform.SetParent(panel.transform, false);
+
+            RectTransform scrollRootRect =
+                scrollRoot.AddComponent<RectTransform>();
+            scrollRootRect.anchorMin = new Vector2(0, 0);
+            scrollRootRect.anchorMax = new Vector2(1, 1);
+            scrollRootRect.offsetMin = new Vector2(20, 68);
+            scrollRootRect.offsetMax = new Vector2(-20, -72);
+
+            ScrollRect scroll = scrollRoot.AddComponent<ScrollRect>();
+            scroll.horizontal = false;
+            scroll.vertical = true;
+            scroll.movementType = ScrollRect.MovementType.Clamped;
+            scroll.scrollSensitivity = 35f;
+
             GameObject viewport = new GameObject("LibraryViewport");
-            viewport.transform.SetParent(panel.transform, false);
+            viewport.transform.SetParent(scrollRoot.transform, false);
 
             RectTransform vr = viewport.AddComponent<RectTransform>();
-            vr.anchorMin = new Vector2(0, 0);
-            vr.anchorMax = new Vector2(1, 1);
-            vr.offsetMin = new Vector2(28, 68);
-            vr.offsetMax = new Vector2(-28, -72);
+            vr.anchorMin = Vector2.zero;
+            vr.anchorMax = Vector2.one;
+            vr.offsetMin = Vector2.zero;
+            vr.offsetMax = Vector2.zero;
 
             Image viewportBg = viewport.AddComponent<Image>();
             viewportBg.color = new Color(0.985f, 0.985f, 0.992f);
@@ -93,12 +111,6 @@ namespace Albummodelite
             outline.effectDistance = new Vector2(1, -1);
 
             viewport.AddComponent<RectMask2D>();
-
-            ScrollRect scroll = viewport.AddComponent<ScrollRect>();
-            scroll.horizontal = false;
-            scroll.vertical = true;
-            scroll.movementType = ScrollRect.MovementType.Clamped;
-            scroll.scrollSensitivity = 35f;
 
             content = new GameObject("LibraryContent");
             content.transform.SetParent(viewport.transform, false);
@@ -114,11 +126,17 @@ namespace Albummodelite
                 Mathf.CeilToInt(libraryAlbums.Count / (float)columns)
             );
 
-            cr.sizeDelta = new Vector2(-20, rows * 245f + 20f);
+            cr.sizeDelta = new Vector2(-8, rows * 245f + 20f);
             cr.anchoredPosition = Vector2.zero;
 
             scroll.viewport = vr;
             scroll.content = cr;
+            AlbumUiResources.AttachVanillaListScrollIndicator(
+                scrollRoot.transform,
+                scroll,
+                "LibraryScrollIndicator"
+            );
+            scroll.verticalNormalizedPosition = 1f;
 
             if (libraryAlbums.Count == 0)
             {
@@ -241,7 +259,8 @@ namespace Albummodelite
             if (details == null)
                 details = gameObject.AddComponent<AlbumDetailPopup>();
 
-            details.Open(album);
+            if (details.Open(album))
+                panel = null;
         }
 
         private void DrawCloseButton()
@@ -250,7 +269,7 @@ namespace Albummodelite
                 panel.transform,
                 "Close",
                 "Close",
-                false,
+                AlbumButtonStyle.Destructive,
                 Close
             );
             if (buttonObj == null)
@@ -266,8 +285,15 @@ namespace Albummodelite
 
         private void Close()
         {
-            AlbumPopupHost.Close(AlbumPopupKind.Library);
-            panel = null;
+            RequestClose();
+        }
+
+        private bool RequestClose()
+        {
+            return AlbumPopupHost.Close(
+                AlbumPopupKind.Library,
+                delegate { panel = null; }
+            );
         }
 
         private string FormatNumber(long value)
