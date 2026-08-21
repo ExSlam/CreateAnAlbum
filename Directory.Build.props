@@ -41,6 +41,9 @@
     <Reference Include="UnityEngine.TextRenderingModule" Private="false">
       <HintPath>$(dllDir)\UnityEngine.TextRenderingModule.dll</HintPath>
     </Reference>
+    <Reference Include="UnityEngine.TextCoreModule" Private="false">
+      <HintPath>$(dllDir)\UnityEngine.TextCoreModule.dll</HintPath>
+    </Reference>
     <Reference Include="UnityEngine.JSONSerializeModule" Private="false">
       <HintPath>$(dllDir)\UnityEngine.JSONSerializeModule.dll</HintPath>
     </Reference>
