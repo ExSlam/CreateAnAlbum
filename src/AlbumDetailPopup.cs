@@ -1,6 +1,7 @@
 using System;
 using UnityEngine;
 using UnityEngine.UI;
+using CreateAnAlbumGroupRules;
 
 namespace Albummodelite
 {
@@ -69,11 +70,11 @@ namespace Albummodelite
             float x = 330f;
 
             AddInfoRow(panel.transform, x, 100, "Release", album.ReleaseDate.ToString("MMM d, yyyy"));
-            AddInfoRow(panel.transform, x, 135, "Songs", album.Songs != null ? album.Songs.Count.ToString() : "0");
-            AddInfoRow(panel.transform, x, 170, "Members", album.Members != null ? album.Members.Count.ToString() : "0");
-            AddInfoRow(panel.transform, x, 205, "Sales", FormatNumber(album.Sales));
-            AddInfoRow(panel.transform, x, 240, "Peak", album.PeakChartPosition > 0 ? "#" + album.PeakChartPosition : "—");
-            AddInfoRow(panel.transform, x, 270, "Weeks", album.WeeksOnChart.ToString());
+            AddInfoRow(panel.transform, x, 132, "Format", AlbumReleaseRules.GetShortLabel((AlbumReleaseKind)album.ReleaseKind));
+            AddInfoRow(panel.transform, x, 164, "Songs", album.Songs != null ? album.Songs.Count.ToString() : "0");
+            AddInfoRow(panel.transform, x, 196, "Members", album.Members != null ? album.Members.Count.ToString() : "0");
+            AddInfoRow(panel.transform, x, 228, "Sales", FormatNumber(album.Sales));
+            AddInfoRow(panel.transform, x, 260, "Peak", album.PeakChartPosition > 0 ? "#" + album.PeakChartPosition : "—");
 
             CreateText(
                 panel.transform,
@@ -82,30 +83,12 @@ namespace Albummodelite
                 12,
                 FontStyle.Bold,
                 new Color(0.39f, 0.34f, 0.72f),
-                new Vector2(x, -320),
+                new Vector2(x, -302),
                 new Vector2(260, 24),
                 TextAnchor.MiddleLeft
             );
 
-            if (album.Songs != null)
-            {
-                for (int i = 0; i < album.Songs.Count && i < 10; i++)
-                {
-                    singles._single song = album.Songs[i];
-
-                    CreateText(
-                        panel.transform,
-                        "Track_" + i,
-                        (i + 1) + ". " + (song != null ? song.title : "Unknown"),
-                        10,
-                        FontStyle.Normal,
-                        new Color(0.28f, 0.27f, 0.34f),
-                        new Vector2(x, -345 - i * 22),
-                        new Vector2(300, 20),
-                        TextAnchor.MiddleLeft
-                    );
-                }
-            }
+            DrawTrackList(panel.transform, album, x);
 
             CreateCloseButton();
 
@@ -113,6 +96,65 @@ namespace Albummodelite
                 return AlbumPopupHost.Transition(AlbumPopupKind.Library, AlbumPopupKind.Detail);
 
             return AlbumPopupHost.Open(AlbumPopupKind.Detail);
+        }
+
+        private void DrawTrackList(Transform parent, AlbumData album, float x)
+        {
+            GameObject scrollRoot = new GameObject("TrackListScrollRoot");
+            scrollRoot.transform.SetParent(parent, false);
+            RectTransform sr = scrollRoot.AddComponent<RectTransform>();
+            sr.anchorMin = sr.anchorMax = sr.pivot = new Vector2(0f, 1f);
+            sr.anchoredPosition = new Vector2(x, -330f);
+            sr.sizeDelta = new Vector2(320f, 125f);
+
+            ScrollRect scroll = scrollRoot.AddComponent<ScrollRect>();
+            scroll.horizontal = false;
+            scroll.vertical = true;
+            scroll.movementType = ScrollRect.MovementType.Clamped;
+            scroll.scrollSensitivity = 25f;
+
+            GameObject viewportObject = new GameObject("TrackListViewport");
+            viewportObject.transform.SetParent(scrollRoot.transform, false);
+            RectTransform viewport = viewportObject.AddComponent<RectTransform>();
+            viewport.anchorMin = Vector2.zero;
+            viewport.anchorMax = Vector2.one;
+            viewport.offsetMin = viewport.offsetMax = Vector2.zero;
+            viewportObject.AddComponent<Image>().color = new Color(1f, 1f, 1f, 0.02f);
+            viewportObject.AddComponent<RectMask2D>();
+
+            GameObject contentObject = new GameObject("TrackListContent");
+            contentObject.transform.SetParent(viewportObject.transform, false);
+            RectTransform content = contentObject.AddComponent<RectTransform>();
+            content.anchorMin = new Vector2(0f, 1f);
+            content.anchorMax = new Vector2(1f, 1f);
+            content.pivot = new Vector2(0.5f, 1f);
+            int trackCount = album.Songs != null ? album.Songs.Count : 0;
+            content.sizeDelta = new Vector2(-18f, Mathf.Max(125f, trackCount * 22f + 4f));
+            content.anchoredPosition = Vector2.zero;
+
+            scroll.viewport = viewport;
+            scroll.content = content;
+            AlbumUiResources.AttachVanillaListScrollIndicator(
+                scrollRoot.transform, scroll, "TrackListScrollIndicator");
+
+            if (album.Songs != null)
+            {
+                for (int i = 0; i < album.Songs.Count; i++)
+                {
+                    singles._single song = album.Songs[i];
+                    CreateText(
+                        contentObject.transform,
+                        "Track_" + i,
+                        (i + 1) + ". " + (song != null ? song.title : "Unknown"),
+                        10,
+                        FontStyle.Normal,
+                        new Color(0.28f, 0.27f, 0.34f),
+                        new Vector2(4f, -i * 22f),
+                        new Vector2(280f, 20f),
+                        TextAnchor.MiddleLeft
+                    );
+                }
+            }
         }
 
         private void AddInfoRow(

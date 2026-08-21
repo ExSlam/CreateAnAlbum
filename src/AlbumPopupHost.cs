@@ -11,7 +11,8 @@ namespace Albummodelite
         Library,
         Detail,
         Chart,
-        ChartUpdate
+        ChartUpdate,
+        Production
     }
 
     /// <summary>
@@ -25,6 +26,7 @@ namespace Albummodelite
         private const int DetailId = 0x414C4454;  // ALDT
         private const int ChartId = 0x414C4348;   // ALCH
         private const int ChartUpdateId = 0x414C5550; // ALUP
+        private const int ProductionId = 0x414C5052; // ALPR
 
         private static readonly Dictionary<AlbumPopupKind, GameObject> roots =
             new Dictionary<AlbumPopupKind, GameObject>();
@@ -43,7 +45,8 @@ namespace Albummodelite
                 case AlbumPopupKind.Library: return (PopupManager._type)LibraryId;
                 case AlbumPopupKind.Detail: return (PopupManager._type)DetailId;
                 case AlbumPopupKind.Chart: return (PopupManager._type)ChartId;
-                default: return (PopupManager._type)ChartUpdateId;
+                case AlbumPopupKind.ChartUpdate: return (PopupManager._type)ChartUpdateId;
+                default: return (PopupManager._type)ProductionId;
             }
         }
 
@@ -605,7 +608,8 @@ namespace Albummodelite
                 type == TypeFor(AlbumPopupKind.Library) ||
                 type == TypeFor(AlbumPopupKind.Detail) ||
                 type == TypeFor(AlbumPopupKind.Chart) ||
-                type == TypeFor(AlbumPopupKind.ChartUpdate);
+                type == TypeFor(AlbumPopupKind.ChartUpdate) ||
+                type == TypeFor(AlbumPopupKind.Production);
         }
 
         internal static void ApplyLayerRecursively(GameObject root, int layer)

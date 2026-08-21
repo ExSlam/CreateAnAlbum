@@ -12,13 +12,16 @@ namespace CreateAnAlbumGroupRules
     internal static class GroupAlbumRules
     {
         private const int RequiredReleasedSingles = 6;
-        private const int MaximumAlbumSongs = 10;
+        private const int MaximumAlbumSongs = 15;
         private const int MaximumMembers = 8;
 
         // Store the chosen group by group ID rather than retaining a stale
         // Groups._group reference across save reloads.
         private static readonly Dictionary<int, int> SelectedGroupIds =
             new Dictionary<int, int>();
+
+        private static readonly Dictionary<int, AlbumReleaseKind> SelectedReleaseKinds =
+            new Dictionary<int, AlbumReleaseKind>();
 
         private static readonly BindingFlags InstanceFlags =
             BindingFlags.Instance |
@@ -28,6 +31,375 @@ namespace CreateAnAlbumGroupRules
         // ---------------------------------------------------------------------
         // GROUP LOOKUP
         // ---------------------------------------------------------------------
+
+        internal static AlbumReleaseKind GetSelectedReleaseKind(
+            AlbumPopup popup)
+        {
+            if (popup == null)
+                return AlbumReleaseKind.MiniAlbum;
+
+            int key = popup.GetInstanceID();
+
+            AlbumReleaseKind kind;
+
+            if (!SelectedReleaseKinds.TryGetValue(
+                    key,
+                    out kind))
+            {
+                kind = AlbumReleaseKind.MiniAlbum;
+                SelectedReleaseKinds[key] = kind;
+            }
+
+            return kind;
+        }
+
+        internal static void SetSelectedReleaseKind(
+            AlbumPopup popup,
+            AlbumReleaseKind kind)
+        {
+            if (popup == null)
+                return;
+
+            SelectedReleaseKinds[
+                popup.GetInstanceID()
+            ] = kind;
+
+            List<singles._single> selectedSongs =
+                GetField<List<singles._single>>(
+                    popup,
+                    "selectedSongs"
+                );
+
+            int max =
+                AlbumReleaseRules.GetMaximumSongs(kind);
+
+            if (selectedSongs != null &&
+                selectedSongs.Count > max)
+            {
+                selectedSongs.RemoveRange(
+                    max,
+                    selectedSongs.Count - max
+                );
+            }
+
+            RefreshPopup(popup);
+        }
+
+        internal static int GetMinimumSongs(
+            AlbumPopup popup)
+        {
+            return AlbumReleaseRules.GetMinimumSongs(
+                GetSelectedReleaseKind(popup)
+            );
+        }
+
+        internal static int GetMaximumSongs(
+            AlbumPopup popup)
+        {
+            return AlbumReleaseRules.GetMaximumSongs(
+                GetSelectedReleaseKind(popup)
+            );
+        }
+
+        private static void MoveChild(
+            Transform parent,
+            string name,
+            Vector2 position)
+        {
+            if (parent == null)
+                return;
+
+            Transform child =
+                parent.Find(name);
+
+            if (child == null)
+                return;
+
+            RectTransform rect =
+                child.GetComponent<RectTransform>();
+
+            if (rect != null)
+                rect.anchoredPosition = position;
+        }
+
+        private static void RepositionInfoFields(
+            GameObject content)
+        {
+            if (content == null)
+                return;
+
+            Transform root = content.transform;
+
+            MoveChild(
+                root,
+                "AlbumTitleLabel",
+                new Vector2(120, -126)
+            );
+
+            MoveChild(
+                root,
+                "AlbumTitleInput",
+                new Vector2(120, -150)
+            );
+
+            MoveChild(
+                root,
+                "SongsHeading",
+                new Vector2(120, -205)
+            );
+
+            MoveChild(
+                root,
+                "SongsCount",
+                new Vector2(430, -205)
+            );
+
+            MoveChild(
+                root,
+                "SongSelectorViewport",
+                new Vector2(120, -238)
+            );
+
+            Transform selector =
+                root.Find(
+                    "SongSelectorViewport"
+                );
+
+            if (selector != null)
+            {
+                RectTransform rect =
+                    selector.GetComponent<RectTransform>();
+
+                if (rect != null)
+                    rect.sizeDelta =
+                        new Vector2(
+                            680,
+                            170
+                        );
+            }
+
+            MoveChild(
+                root,
+                "InfoTip",
+                new Vector2(120, -414)
+            );
+        }
+
+        private static void DrawReleaseTypeSelector(
+            AlbumPopup popup,
+            GameObject content)
+        {
+            if (popup == null ||
+                content == null)
+            {
+                return;
+            }
+
+            AlbumReleaseKind selected =
+                GetSelectedReleaseKind(popup);
+
+            CreateText(
+                content.transform,
+                "ReleaseTypeLabel",
+                "Release Type",
+                12,
+                FontStyle.Bold,
+                new Color(
+                    0.39f,
+                    0.34f,
+                    0.72f
+                ),
+                new Vector2(
+                    120,
+                    -55
+                ),
+                new Vector2(
+                    250,
+                    24
+                ),
+                TextAnchor.MiddleLeft
+            );
+
+            DrawReleaseTypeButton(
+                popup,
+                content.transform,
+                AlbumReleaseKind.MiniAlbum,
+                "Mini Album",
+                "6 songs",
+                new Vector2(
+                    120,
+                    -81
+                ),
+                selected ==
+                    AlbumReleaseKind.MiniAlbum
+            );
+
+            DrawReleaseTypeButton(
+                popup,
+                content.transform,
+                AlbumReleaseKind.EP,
+                "EP",
+                "6–10 songs",
+                new Vector2(
+                    325,
+                    -81
+                ),
+                selected ==
+                    AlbumReleaseKind.EP
+            );
+
+            DrawReleaseTypeButton(
+                popup,
+                content.transform,
+                AlbumReleaseKind.LP,
+                "Album / LP",
+                "10–15 songs",
+                new Vector2(
+                    530,
+                    -81
+                ),
+                selected ==
+                    AlbumReleaseKind.LP
+            );
+        }
+
+        private static void DrawReleaseTypeButton(
+            AlbumPopup popup,
+            Transform parent,
+            AlbumReleaseKind kind,
+            string title,
+            string subtitle,
+            Vector2 position,
+            bool selected)
+        {
+            GameObject obj =
+                new GameObject(
+                    "ReleaseType_" +
+                    kind
+                );
+
+            obj.transform.SetParent(
+                parent,
+                false
+            );
+
+            RectTransform rect =
+                obj.AddComponent<RectTransform>();
+
+            rect.anchorMin =
+                new Vector2(0, 1);
+
+            rect.anchorMax =
+                new Vector2(0, 1);
+
+            rect.pivot =
+                new Vector2(0, 1);
+
+            rect.sizeDelta =
+                new Vector2(
+                    190,
+                    39
+                );
+
+            rect.anchoredPosition =
+                position;
+
+            Image bg =
+                obj.AddComponent<Image>();
+
+            bg.color =
+                selected
+                    ? new Color(
+                        0.91f,
+                        0.99f,
+                        0.93f
+                    )
+                    : Color.white;
+
+            Outline outline =
+                obj.AddComponent<Outline>();
+
+            outline.effectColor =
+                selected
+                    ? new Color(
+                        0.28f,
+                        0.67f,
+                        0.39f
+                    )
+                    : new Color(
+                        0.76f,
+                        0.75f,
+                        0.84f
+                    );
+
+            outline.effectDistance =
+                new Vector2(1, -1);
+
+            Button button =
+                obj.AddComponent<Button>();
+
+            button.targetGraphic = bg;
+
+            button.onClick.AddListener(
+                delegate
+                {
+                    SetSelectedReleaseKind(
+                        popup,
+                        kind
+                    );
+                }
+            );
+
+            CreateText(
+                obj.transform,
+                "Title",
+                title,
+                11,
+                FontStyle.Bold,
+                selected
+                    ? new Color(
+                        0.25f,
+                        0.58f,
+                        0.34f
+                    )
+                    : new Color(
+                        0.39f,
+                        0.34f,
+                        0.72f
+                    ),
+                new Vector2(
+                    8,
+                    -2
+                ),
+                new Vector2(
+                    174,
+                    19
+                ),
+                TextAnchor.MiddleCenter
+            );
+
+            CreateText(
+                obj.transform,
+                "Subtitle",
+                subtitle,
+                8,
+                FontStyle.Normal,
+                new Color(
+                    0.50f,
+                    0.49f,
+                    0.58f
+                ),
+                new Vector2(
+                    8,
+                    -19
+                ),
+                new Vector2(
+                    174,
+                    17
+                ),
+                TextAnchor.MiddleCenter
+            );
+        }
 
         internal static List<Groups._group> GetPlayerGroups()
         {
@@ -247,6 +619,21 @@ namespace CreateAnAlbumGroupRules
             SetField(popup, "selectedCenterGirl", null);
         }
 
+        internal static void ResetPopupState(AlbumPopup popup)
+        {
+            if (popup == null)
+                return;
+
+            int key = popup.GetInstanceID();
+            SelectedGroupIds.Remove(key);
+            SelectedReleaseKinds.Remove(key);
+            SetField(popup, "panel", null);
+
+            MethodInfo reset = typeof(AlbumPopup).GetMethod("ResetAlbumCreation", InstanceFlags);
+            if (reset != null)
+                reset.Invoke(popup, null);
+        }
+
         // ---------------------------------------------------------------------
         // INFO PAGE GROUP PICKER
         // ---------------------------------------------------------------------
@@ -259,6 +646,12 @@ namespace CreateAnAlbumGroupRules
 
             Groups._group group = GetSelectedGroup(popup);
             List<Groups._group> groups = GetPlayerGroups();
+
+            RepositionInfoFields(content);
+            DrawReleaseTypeSelector(
+                popup,
+                content
+            );
 
             if (group == null)
             {
@@ -278,7 +671,15 @@ namespace CreateAnAlbumGroupRules
             }
 
             int released = GetReleasedSingles(group).Count;
-            bool ready = released >= RequiredReleasedSingles;
+            int minimumSongs =
+                GetMinimumSongs(popup);
+            int maximumSongs =
+                GetMaximumSongs(popup);
+            AlbumReleaseKind releaseKind =
+                GetSelectedReleaseKind(popup);
+
+            bool ready =
+                released >= minimumSongs;
 
             GameObject card = new GameObject("AlbumGroupSelector");
             card.transform.SetParent(content.transform, false);
@@ -325,7 +726,7 @@ namespace CreateAnAlbumGroupRules
                 "\n" +
                 released +
                 " / " +
-                RequiredReleasedSingles +
+                minimumSongs +
                 " released singles" +
                 (ready ? "  ✓" : "  🔒");
 
@@ -369,13 +770,19 @@ namespace CreateAnAlbumGroupRules
                         "  •  Selected: " +
                         selectedCount +
                         " / " +
-                        MaximumAlbumSongs +
+                        maximumSongs +
+                        "  •  " +
+                        AlbumReleaseRules.GetShortLabel(
+                            releaseKind
+                        ) +
                         "  •  " +
                         released +
                         " released";
 
                     text.color =
-                        ready && selectedCount >= RequiredReleasedSingles
+                        ready &&
+                        selectedCount >= minimumSongs &&
+                        selectedCount <= maximumSongs
                             ? new Color(0.30f, 0.62f, 0.40f)
                             : new Color(0.65f, 0.42f, 0.42f);
                 }
@@ -390,7 +797,7 @@ namespace CreateAnAlbumGroupRules
                 {
                     if (!ready)
                     {
-                        int needed = RequiredReleasedSingles - released;
+                        int needed = minimumSongs - released;
 
                         text.text =
                             group.Title +
@@ -403,9 +810,13 @@ namespace CreateAnAlbumGroupRules
                     else
                     {
                         text.text =
-                            "Choose 6–10 released singles by " +
+                            "Choose " +
+                            AlbumReleaseRules.GetRangeText(
+                                releaseKind
+                            ) +
+                            " released singles by " +
                             group.Title +
-                            ". Singles from other groups cannot be used.";
+                            ". Production cost: ¥500,000.";
                     }
                 }
             }
@@ -600,9 +1011,16 @@ namespace CreateAnAlbumGroupRules
             }
             else
             {
-                if (selectedSongs.Count >= MaximumAlbumSongs)
+                int maximumSongs =
+                    GetMaximumSongs(popup);
+
+                if (selectedSongs.Count >= maximumSongs)
                 {
-                    Debug.Log("[Album] Maximum 10 songs.");
+                    Debug.Log(
+                        "[Album] Maximum " +
+                        maximumSongs +
+                        " songs for this release type."
+                    );
                     return;
                 }
 
@@ -843,21 +1261,37 @@ namespace CreateAnAlbumGroupRules
         // VALIDATION
         // ---------------------------------------------------------------------
 
-        internal static bool ValidateInfoStep(AlbumPopup popup)
+        internal static bool ValidateInfoStep(
+            AlbumPopup popup)
         {
-            Groups._group group = GetSelectedGroup(popup);
+            Groups._group group =
+                GetSelectedGroup(popup);
 
             if (group == null)
             {
-                Debug.LogWarning("[AlbumGroupRules] Select a group first.");
+                Debug.LogWarning(
+                    "[AlbumGroupRules] Select a group first."
+                );
+
                 return false;
             }
 
-            List<singles._single> released = GetReleasedSingles(group);
+            AlbumReleaseKind kind =
+                GetSelectedReleaseKind(popup);
 
-            if (released.Count < RequiredReleasedSingles)
+            int minimum =
+                AlbumReleaseRules.GetMinimumSongs(kind);
+
+            int maximum =
+                AlbumReleaseRules.GetMaximumSongs(kind);
+
+            List<singles._single> released =
+                GetReleasedSingles(group);
+
+            if (released.Count < minimum)
             {
-                int needed = RequiredReleasedSingles - released.Count;
+                int needed =
+                    minimum - released.Count;
 
                 Debug.LogWarning(
                     "[AlbumGroupRules] " +
@@ -866,22 +1300,47 @@ namespace CreateAnAlbumGroupRules
                     needed +
                     " more released single" +
                     (needed == 1 ? "" : "s") +
-                    " before making an album."
+                    " before making a " +
+                    AlbumReleaseRules.GetDisplayName(
+                        kind
+                    ) +
+                    "."
                 );
 
                 return false;
             }
 
             List<singles._single> selectedSongs =
-                GetField<List<singles._single>>(popup, "selectedSongs");
+                GetField<List<singles._single>>(
+                    popup,
+                    "selectedSongs"
+                );
 
-            if (selectedSongs == null ||
-                selectedSongs.Count < RequiredReleasedSingles)
+            int selectedCount =
+                selectedSongs != null
+                    ? selectedSongs.Count
+                    : 0;
+
+            if (selectedCount < minimum ||
+                selectedCount > maximum)
             {
-                return true; // Existing AlbumPopup will show its normal 6-song warning.
+                Debug.LogWarning(
+                    "[AlbumGroupRules] " +
+                    AlbumReleaseRules.GetDisplayName(
+                        kind
+                    ) +
+                    " requires " +
+                    AlbumReleaseRules.GetRangeText(
+                        kind
+                    ) +
+                    " songs."
+                );
+
+                return false;
             }
 
-            foreach (singles._single song in selectedSongs)
+            foreach (singles._single song
+                     in selectedSongs)
             {
                 if (!released.Contains(song))
                 {
@@ -902,55 +1361,104 @@ namespace CreateAnAlbumGroupRules
         // SAVE / RELEASE
         // ---------------------------------------------------------------------
 
-        internal static bool SaveAlbum(AlbumPopup popup)
+        internal static bool SaveAlbum(
+            AlbumPopup popup)
         {
             if (popup == null)
                 return false;
 
-            Groups._group group = GetSelectedGroup(popup);
+            Groups._group group =
+                GetSelectedGroup(popup);
 
             if (group == null)
             {
-                Debug.LogWarning("[AlbumGroupRules] Album needs a group.");
+                Debug.LogWarning(
+                    "[AlbumGroupRules] Album needs a group."
+                );
+
                 return false;
             }
 
-            string albumTitle = popup.AlbumTitle;
+            string albumTitle =
+                popup.AlbumTitle;
 
-            if (string.IsNullOrWhiteSpace(albumTitle))
+            if (string.IsNullOrWhiteSpace(
+                    albumTitle))
             {
-                Debug.LogWarning("[Album] Album needs a title.");
+                Debug.LogWarning(
+                    "[Album] Album needs a title."
+                );
+
                 return false;
             }
+
+            AlbumReleaseKind releaseKind =
+                GetSelectedReleaseKind(popup);
 
             List<singles._single> selectedSongs =
-                GetField<List<singles._single>>(popup, "selectedSongs");
+                GetField<List<singles._single>>(
+                    popup,
+                    "selectedSongs"
+                );
 
             List<data_girls.girls> selectedGirls =
-                GetField<List<data_girls.girls>>(popup, "selectedGirls");
+                GetField<List<data_girls.girls>>(
+                    popup,
+                    "selectedGirls"
+                );
 
-            List<singles._single> releasedSingles = GetReleasedSingles(group);
-            List<data_girls.girls> groupMembers = GetGroupMembers(group);
+            List<singles._single> releasedSingles =
+                GetReleasedSingles(group);
 
-            if (releasedSingles.Count < RequiredReleasedSingles)
+            List<data_girls.girls> groupMembers =
+                GetGroupMembers(group);
+
+            int minimum =
+                AlbumReleaseRules.GetMinimumSongs(
+                    releaseKind
+                );
+
+            int maximum =
+                AlbumReleaseRules.GetMaximumSongs(
+                    releaseKind
+                );
+
+            if (releasedSingles.Count < minimum)
             {
                 Debug.LogWarning(
                     "[AlbumGroupRules] " +
                     group.Title +
-                    " does not have 6 released singles yet."
+                    " does not have enough released singles for " +
+                    AlbumReleaseRules.GetDisplayName(
+                        releaseKind
+                    ) +
+                    "."
                 );
+
                 return false;
             }
 
             if (selectedSongs == null ||
-                selectedSongs.Count < RequiredReleasedSingles ||
-                selectedSongs.Count > MaximumAlbumSongs)
+                selectedSongs.Count < minimum ||
+                selectedSongs.Count > maximum)
             {
-                Debug.LogWarning("[Album] Album must contain 6 to 10 songs.");
+                Debug.LogWarning(
+                    "[Album] " +
+                    AlbumReleaseRules.GetDisplayName(
+                        releaseKind
+                    ) +
+                    " requires " +
+                    AlbumReleaseRules.GetRangeText(
+                        releaseKind
+                    ) +
+                    " songs."
+                );
+
                 return false;
             }
 
-            foreach (singles._single song in selectedSongs)
+            foreach (singles._single song
+                     in selectedSongs)
             {
                 if (!releasedSingles.Contains(song))
                 {
@@ -959,17 +1467,23 @@ namespace CreateAnAlbumGroupRules
                         group.Title +
                         "."
                     );
+
                     return false;
                 }
             }
 
-            if (selectedGirls == null || selectedGirls.Count == 0)
+            if (selectedGirls == null ||
+                selectedGirls.Count == 0)
             {
-                Debug.LogWarning("[Album] Album needs at least one member.");
+                Debug.LogWarning(
+                    "[Album] Album needs at least one member."
+                );
+
                 return false;
             }
 
-            foreach (data_girls.girls girl in selectedGirls)
+            foreach (data_girls.girls girl
+                     in selectedGirls)
             {
                 if (!groupMembers.Contains(girl))
                 {
@@ -978,121 +1492,18 @@ namespace CreateAnAlbumGroupRules
                         group.Title +
                         "."
                     );
+
                     return false;
                 }
             }
 
-            AlbumData album = new AlbumData();
-
-            int highest = 0;
-
-            if (Albums.AlbumList != null)
-            {
-                foreach (AlbumData existing in Albums.AlbumList)
-                {
-                    if (existing != null && existing.ID > highest)
-                        highest = existing.ID;
-                }
-            }
-
-            album.ID = highest + 1;
-            album.Title = albumTitle.Trim();
-
-            // This is the key group-aware change.
-            album.GroupName = group.Title;
-
-            album.ReleaseDate = staticVars.dateTime;
-            album.Released = true;
-            album.PlayerAlbum = true;
-
-            album.Members =
-                new List<data_girls.girls>(selectedGirls);
-
-            album.Songs =
-                new List<singles._single>(selectedSongs);
-
-            album.Sales = 0L;
-            album.WeeklySales = 0L;
-            album.Profit = 0L;
-
-            album.ChartPosition = 0;
-            album.PreviousChartPosition = 0;
-            album.PeakChartPosition = 0;
-            album.WeeksOnChart = 0;
-
-            string[] themeNames =
-                GetField<string[]>(popup, "themeNames");
-
-            int selectedTheme =
-                GetField<int>(popup, "selectedTheme");
-
-            album.Theme =
-                themeNames != null &&
-                selectedTheme >= 0 &&
-                selectedTheme < themeNames.Length
-                    ? themeNames[selectedTheme]
-                    : "";
-
-            album.ThemeIndex = selectedTheme;
-            album.BackgroundIndex = GetField<int>(popup, "selectedBackground");
-            album.LayoutIndex = GetField<int>(popup, "selectedLayout");
-            album.FontIndex = GetField<int>(popup, "selectedFont");
-            album.TextColorIndex = GetField<int>(popup, "selectedTextColor");
-            album.TitlePosition = GetField<int>(popup, "titlePosition");
-            album.ShowGroupName = GetField<bool>(popup, "showGroupName");
-            album.OrnamentStyle = GetField<int>(popup, "ornamentStyle");
-            album.FrameStyle = GetField<int>(popup, "frameStyle");
-            album.TitleEffect = GetField<int>(popup, "titleEffect");
-            album.PortraitScale = GetField<float>(popup, "portraitScale");
-            album.CenterEmphasis = GetField<float>(popup, "centerEmphasis");
-            album.PortraitYOffset = GetField<float>(popup, "portraitYOffset");
-            album.PortraitSpacing = GetField<float>(popup, "portraitSpacing");
-            album.EffectsIntensity = GetField<float>(popup, "effectsIntensity");
-
-            data_girls.girls selectedCenterGirl =
-                GetField<data_girls.girls>(popup, "selectedCenterGirl");
-
-            album.CenterMemberIndex =
-                selectedCenterGirl != null
-                    ? selectedGirls.IndexOf(selectedCenterGirl)
-                    : -1;
-
-            Albums.AddAlbum(album);
-
-            AlbumSalesManager.RegisterNewAlbum(album);
-
-            // Keep using the persistence system from the already-working
-            // CreateAnAlbum DLL.
-            AlbumPersistence.MarkDirty();
-
-            Debug.Log(
-                "[AlbumGroupRules] RELEASED: " +
-                album.Title +
-                " | Group: " +
-                album.GroupName +
-                " | Songs: " +
-                album.Songs.Count +
-                " | Members: " +
-                album.Members.Count +
-                " | Album ID: " +
-                album.ID
+            return AlbumProductionManager.TryStart(
+                popup,
+                group,
+                releaseKind,
+                selectedSongs,
+                selectedGirls
             );
-
-            AlbumPopupHost.Close(
-                AlbumPopupKind.Create,
-                delegate
-                {
-                    SetField(popup, "panel", null);
-                    MethodInfo reset = typeof(AlbumPopup).GetMethod(
-                        "ResetAlbumCreation",
-                        InstanceFlags
-                    );
-                    if (reset != null)
-                        reset.Invoke(popup, null);
-                }
-            );
-
-            return true;
         }
 
         // ---------------------------------------------------------------------
@@ -1170,7 +1581,10 @@ namespace CreateAnAlbumGroupRules
                 GroupAlbumRules.GetField<GameObject>(__instance, "panel");
 
             if (panel != null)
+            {
                 GroupAlbumRules.GetSelectedGroup(__instance);
+                GroupAlbumRules.GetSelectedReleaseKind(__instance);
+            }
         }
     }
 
@@ -1283,9 +1697,32 @@ namespace CreateAnAlbumGroupRules
                     Text text = theme.GetComponent<Text>();
 
                     if (text != null)
-                        text.text = group.Title + "  •  " + text.text;
+                    {
+                        AlbumReleaseKind kind =
+                            GroupAlbumRules.GetSelectedReleaseKind(__instance);
+                        text.text =
+                            group.Title + "  •  " +
+                            AlbumReleaseRules.GetShortLabel(kind) + "  •  " +
+                            text.text;
+                    }
                 }
             }
+        }
+    }
+
+    [HarmonyPatch(typeof(AlbumPopup), "DrawButtons")]
+    internal static class AlbumPopupDrawButtonsProductionPatch
+    {
+        private static void Postfix(AlbumPopup __instance)
+        {
+            GameObject panel =
+                GroupAlbumRules.GetField<GameObject>(__instance, "panel");
+            if (panel == null)
+                return;
+
+            Transform create = panel.transform.Find("Create");
+            if (create != null)
+                AlbumUiResources.SetButtonLabel(create.gameObject, "Start Production");
         }
     }
 

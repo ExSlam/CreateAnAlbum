@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
 using UnityEngine.UI;
+using CreateAnAlbumGroupRules;
 
 namespace Albummodelite
 {
@@ -233,10 +234,12 @@ namespace Albummodelite
                 TextAnchor.MiddleLeft
             );
 
+            string format = AlbumReleaseRules.GetShortLabel((AlbumReleaseKind)album.ReleaseKind);
             string sales =
-                album.Sales > 0
+                format + "  •  " +
+                (album.Sales > 0
                     ? FormatNumber(album.Sales) + " sales"
-                    : "New release";
+                    : "New release");
 
             CreateText(
                 card.transform,

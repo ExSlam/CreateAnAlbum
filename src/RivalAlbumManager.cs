@@ -80,10 +80,17 @@ namespace Albummodelite
             if (!RivalsRebornIntegration.IsReady)
                 return;
 
-            List<RivalLabelView> eligible = GetEligibleLabels();
+            List<RivalLabelView> eligible = GetEligibleLabels()
+                .Where(label => !Albums.AlbumList.Any(a =>
+                    a != null && !a.PlayerAlbum && a.RivalGroupId == label.GroupId && a.Released &&
+                    (staticVars.dateTime - a.ReleaseDate).TotalDays < 35d))
+                .ToList();
             if (eligible.Count == 0)
                 return;
 
+            // Apply the same-label cooldown before choosing the cycle's 1-3 releases.
+            // Selecting first and filtering afterward could produce zero releases even when
+            // other labels were eligible and outside the cooldown.
             int releaseCount = Mathf.Min(UnityEngine.Random.Range(1, 4), eligible.Count);
             List<RivalLabelView> selected = eligible
                 .OrderBy(x => UnityEngine.Random.value)
@@ -92,18 +99,15 @@ namespace Albummodelite
 
             foreach (RivalLabelView label in selected)
             {
-                bool recentlyReleased = Albums.AlbumList.Any(a =>
-                    a != null && !a.PlayerAlbum && a.RivalGroupId == label.GroupId && a.Released &&
-                    (staticVars.dateTime - a.ReleaseDate).TotalDays < 35d);
-                if (recentlyReleased)
-                    continue;
-
                 AlbumData album = CreateRivalAlbum(label, true);
                 if (album == null)
                     continue;
 
                 Albums.AddAlbum(album);
                 AlbumSalesManager.RegisterNewAlbum(album);
+                RivalsRebornIntegration.TryQueueNews(
+                    album.GroupName + " released a new album, \"" + album.Title + "\"."
+                );
             }
 
             EnsureInitialRivals(14);
@@ -159,9 +163,17 @@ namespace Albummodelite
 
             album.ThemeIndex = UnityEngine.Random.Range(0, 5);
             album.Theme = GetThemeName(album.ThemeIndex);
-            album.BackgroundIndex = UnityEngine.Random.Range(0, 6);
+            int backgroundCount = AlbumBackgroundCatalog.Count;
+            album.BackgroundIndex = backgroundCount > 0
+                ? UnityEngine.Random.Range(0, backgroundCount)
+                : 0;
+            album.BackgroundKey = backgroundCount > 0
+                ? AlbumBackgroundCatalog.GetKey(album.BackgroundIndex)
+                : "";
             album.LayoutIndex = UnityEngine.Random.Range(0, 5);
-            album.FontIndex = UnityEngine.Random.Range(0, 4);
+            album.FontIndex = UnityEngine.Random.Range(0, Mathf.Max(1, AlbumFontCatalog.Count));
+            album.FontKey = AlbumFontCatalog.GetKey(album.FontIndex);
+            album.ReleaseKind = (int)CreateAnAlbumGroupRules.AlbumReleaseKind.LP;
             album.TextColorIndex = UnityEngine.Random.Range(0, 7);
             album.TitlePosition = UnityEngine.Random.Range(0, 3);
             album.ShowGroupName = true;

@@ -49,13 +49,7 @@ namespace Albummodelite
         private Font[] albumFonts;
         private int selectedFont = 0;
 
-        private readonly string[] fontNames =
-        {
-            "Elegant",
-            "Classic",
-            "Bold",
-            "Script"
-        };
+        private string[] fontNames = new string[0];
 
         private readonly string[] themeNames =
         {
@@ -68,6 +62,8 @@ namespace Albummodelite
 
         private int selectedTheme = 0;
         private int selectedBackground = 0;
+        private string selectedBackgroundKey = "";
+        private float backgroundScrollPosition = 0f;
         private int selectedLayout = 2;
         private int selectedTextColor = 0;
 
@@ -456,8 +452,12 @@ namespace Albummodelite
             album.Theme = themeNames[selectedTheme];
             album.ThemeIndex = selectedTheme;
             album.BackgroundIndex = selectedBackground;
+            album.BackgroundKey = string.IsNullOrEmpty(selectedBackgroundKey)
+                ? AlbumBackgroundCatalog.GetKey(selectedBackground)
+                : selectedBackgroundKey;
             album.LayoutIndex = selectedLayout;
             album.FontIndex = selectedFont;
+            album.FontKey = AlbumFontCatalog.GetKey(selectedFont);
             album.TextColorIndex = selectedTextColor;
             album.TitlePosition = titlePosition;
             album.ShowGroupName = showGroupName;
@@ -1025,13 +1025,26 @@ namespace Albummodelite
 
         private void DrawCoverControls(Transform parent)
         {
+            const int fontColumns = 4;
+            const float fontRowPitch = 34f;
+            const float backgroundExtraHeight = 34f;
+            int fontRows = Mathf.Max(1, Mathf.CeilToInt((fontNames != null ? fontNames.Length : 0) / (float)fontColumns));
+            float fontExtraHeight = Mathf.Max(0, fontRows - 1) * fontRowPitch;
+
             GameObject controls = CreateCardUnder(
                 parent,
                 "CoverControls",
                 new Vector2(0, 0),
-                new Vector2(317, 675),
+                new Vector2(317, 675 + fontExtraHeight + backgroundExtraHeight),
                 new Color(0.975f, 0.975f, 0.985f)
             );
+
+            RectTransform scrollContentRect =
+                parent != null ? parent.GetComponent<RectTransform>() : null;
+            if (scrollContentRect != null)
+                scrollContentRect.sizeDelta = new Vector2(
+                    scrollContentRect.sizeDelta.x,
+                    690 + fontExtraHeight + backgroundExtraHeight);
 
             // Album name
             CreatePanelText(
@@ -1238,41 +1251,7 @@ namespace Albummodelite
                 TextAnchor.MiddleLeft
             );
 
-            int bgCount = Mathf.Min(coverBackgrounds.Count, 6);
-
-            for (int i = 0; i < bgCount; i++)
-            {
-                int index = i;
-
-                GameObject bgThumb = new GameObject("Background_" + i);
-                bgThumb.transform.SetParent(controls.transform, false);
-
-                RectTransform r = bgThumb.AddComponent<RectTransform>();
-                r.anchorMin = new Vector2(0, 1);
-                r.anchorMax = new Vector2(0, 1);
-                r.pivot = new Vector2(0, 1);
-                r.sizeDelta = new Vector2(42, 36);
-                r.anchoredPosition = new Vector2(14 + (i * 48), -267);
-
-                Image img = bgThumb.AddComponent<Image>();
-                img.sprite = coverBackgrounds[i];
-                img.preserveAspect = true;
-
-                Outline o = bgThumb.AddComponent<Outline>();
-                o.effectColor = i == selectedBackground
-                    ? new Color(0.42f, 0.32f, 0.90f)
-                    : new Color(0.80f, 0.80f, 0.86f);
-                o.effectDistance = i == selectedBackground
-                    ? new Vector2(2, -2)
-                    : new Vector2(1, -1);
-
-                Button button = bgThumb.AddComponent<Button>();
-                button.onClick.AddListener(() =>
-                {
-                    selectedBackground = index;
-                    RefreshUI();
-                });
-            }
+            CreateBackgroundPicker(controls.transform);
 
             // Text style
             CreatePanelText(
@@ -1282,7 +1261,7 @@ namespace Albummodelite
                 11,
                 FontStyle.Bold,
                 new Color(0.39f, 0.34f, 0.72f),
-                new Vector2(14, -308),
+                new Vector2(14, -308 - backgroundExtraHeight),
                 new Vector2(270, 18),
                 TextAnchor.MiddleLeft
             );
@@ -1290,12 +1269,16 @@ namespace Albummodelite
             for (int i = 0; i < fontNames.Length; i++)
             {
                 int index = i;
+                int fontRow = i / fontColumns;
+                int fontColumn = i % fontColumns;
 
                 CreateChoiceButton(
                     controls.transform,
                     "Font_" + i,
                     fontNames[i],
-                    new Vector2(14 + (i * 76), -328),
+                    new Vector2(
+                        14 + (fontColumn * 76),
+                        -328 - backgroundExtraHeight - (fontRow * fontRowPitch)),
                     new Vector2(70, 28),
                     i == selectedFont,
                     () =>
@@ -1307,9 +1290,23 @@ namespace Albummodelite
                 );
             }
 
+            // Everything after the variable-length font grid lives under one shifted root,
+            // so adding custom fonts cannot overlap or push controls outside the scrollable area.
+            GameObject afterFontRoot = new GameObject("AfterFontControls");
+            afterFontRoot.transform.SetParent(controls.transform, false);
+            RectTransform afterFontRect = afterFontRoot.AddComponent<RectTransform>();
+            afterFontRect.anchorMin = new Vector2(0f, 1f);
+            afterFontRect.anchorMax = new Vector2(0f, 1f);
+            afterFontRect.pivot = new Vector2(0f, 1f);
+            afterFontRect.anchoredPosition = new Vector2(
+                0f,
+                -(fontExtraHeight + backgroundExtraHeight));
+            afterFontRect.sizeDelta = new Vector2(317f, 675f);
+            Transform afterFont = afterFontRoot.transform;
+
             // Text color
             CreatePanelText(
-                controls.transform,
+                afterFont,
                 "TextColorLabel",
                 "Text Color",
                 11,
@@ -1325,7 +1322,7 @@ namespace Albummodelite
                 int index = i;
 
                 GameObject swatch = new GameObject("Color_" + i);
-                swatch.transform.SetParent(controls.transform, false);
+                swatch.transform.SetParent(afterFont, false);
 
                 RectTransform r = swatch.AddComponent<RectTransform>();
                 r.anchorMin = new Vector2(0, 1);
@@ -1357,7 +1354,7 @@ namespace Albummodelite
 
             // Advanced adjustments
             CreatePanelText(
-                controls.transform,
+                afterFont,
                 "AdjustmentsLabel",
                 "Adjustments",
                 11,
@@ -1370,7 +1367,7 @@ namespace Albummodelite
 
             // Title position
             CreatePanelText(
-                controls.transform,
+                afterFont,
                 "TitlePositionLabel",
                 "Title Position",
                 9,
@@ -1386,7 +1383,7 @@ namespace Albummodelite
             {
                 int idx = i;
                 CreateChoiceButton(
-                    controls.transform,
+                    afterFont,
                     "TitlePos_" + i,
                     titlePosLabels[i],
                     new Vector2(14 + (i * 49), -463),
@@ -1402,7 +1399,7 @@ namespace Albummodelite
             }
 
             CreateChoiceButton(
-                controls.transform,
+                afterFont,
                 "GroupNameToggle",
                 showGroupName ? "Group ON" : "Group OFF",
                 new Vector2(165, -463),
@@ -1418,7 +1415,7 @@ namespace Albummodelite
 
             string[] ornaments = { "Crown", "Diamond", "Stars" };
             CreateChoiceButton(
-                controls.transform,
+                afterFont,
                 "Ornament",
                 ornaments[ornamentStyle],
                 new Vector2(236, -463),
@@ -1434,7 +1431,7 @@ namespace Albummodelite
 
             // Portrait scale
             CreatePanelText(
-                controls.transform,
+                afterFont,
                 "PortraitScaleLabel",
                 "Portrait Scale",
                 8,
@@ -1446,7 +1443,7 @@ namespace Albummodelite
             );
 
             CreateChoiceButton(
-                controls.transform,
+                afterFont,
                 "PortraitMinus",
                 "-",
                 new Vector2(110, -493),
@@ -1461,7 +1458,7 @@ namespace Albummodelite
             );
 
             CreatePanelText(
-                controls.transform,
+                afterFont,
                 "PortraitScaleText",
                 Mathf.RoundToInt(portraitScale * 100f) + "%",
                 8,
@@ -1473,7 +1470,7 @@ namespace Albummodelite
             );
 
             CreateChoiceButton(
-                controls.transform,
+                afterFont,
                 "PortraitPlus",
                 "+",
                 new Vector2(181, -493),
@@ -1489,7 +1486,7 @@ namespace Albummodelite
 
             // Center emphasis
             CreatePanelText(
-                controls.transform,
+                afterFont,
                 "CenterEmphasisLabel",
                 "Center",
                 8,
@@ -1501,7 +1498,7 @@ namespace Albummodelite
             );
 
             CreateChoiceButton(
-                controls.transform,
+                afterFont,
                 "CenterMinus",
                 "-",
                 new Vector2(255, -493),
@@ -1516,7 +1513,7 @@ namespace Albummodelite
             );
 
             CreateChoiceButton(
-                controls.transform,
+                afterFont,
                 "CenterPlus",
                 "+",
                 new Vector2(279, -493),
@@ -1532,7 +1529,7 @@ namespace Albummodelite
 
             // Portrait Y
             CreatePanelText(
-                controls.transform,
+                afterFont,
                 "PortraitYLabel",
                 "Portrait Y",
                 8,
@@ -1544,7 +1541,7 @@ namespace Albummodelite
             );
 
             CreateChoiceButton(
-                controls.transform,
+                afterFont,
                 "PortraitYMinus",
                 "-",
                 new Vector2(98, -523),
@@ -1559,7 +1556,7 @@ namespace Albummodelite
             );
 
             CreatePanelText(
-                controls.transform,
+                afterFont,
                 "PortraitYText",
                 Mathf.RoundToInt(portraitYOffset).ToString(),
                 8,
@@ -1571,7 +1568,7 @@ namespace Albummodelite
             );
 
             CreateChoiceButton(
-                controls.transform,
+                afterFont,
                 "PortraitYPlus",
                 "+",
                 new Vector2(168, -523),
@@ -1587,7 +1584,7 @@ namespace Albummodelite
 
             // Spacing
             CreatePanelText(
-                controls.transform,
+                afterFont,
                 "SpacingLabel",
                 "Spacing",
                 8,
@@ -1599,7 +1596,7 @@ namespace Albummodelite
             );
 
             CreateChoiceButton(
-                controls.transform,
+                afterFont,
                 "SpacingMinus",
                 "-",
                 new Vector2(253, -523),
@@ -1614,7 +1611,7 @@ namespace Albummodelite
             );
 
             CreateChoiceButton(
-                controls.transform,
+                afterFont,
                 "SpacingPlus",
                 "+",
                 new Vector2(277, -523),
@@ -1630,7 +1627,7 @@ namespace Albummodelite
 
             // FX intensity
             CreatePanelText(
-                controls.transform,
+                afterFont,
                 "EffectsLabel",
                 "Effects",
                 8,
@@ -1642,7 +1639,7 @@ namespace Albummodelite
             );
 
             CreateChoiceButton(
-                controls.transform,
+                afterFont,
                 "EffectsMinus",
                 "-",
                 new Vector2(74, -553),
@@ -1657,7 +1654,7 @@ namespace Albummodelite
             );
 
             CreatePanelText(
-                controls.transform,
+                afterFont,
                 "EffectsText",
                 Mathf.RoundToInt(effectsIntensity * 100f) + "%",
                 8,
@@ -1669,7 +1666,7 @@ namespace Albummodelite
             );
 
             CreateChoiceButton(
-                controls.transform,
+                afterFont,
                 "EffectsPlus",
                 "+",
                 new Vector2(147, -553),
@@ -1686,7 +1683,7 @@ namespace Albummodelite
             // Frame selector
             string[] frameNames = { "None", "Simple", "Elegant", "Stars", "Neon" };
             CreateChoiceButton(
-                controls.transform,
+                afterFont,
                 "FrameSelector",
                 "Frame: " + frameNames[frameStyle],
                 new Vector2(180, -553),
@@ -1703,7 +1700,7 @@ namespace Albummodelite
             // Title effect selector
             string[] titleEffects = { "None", "Shadow", "Outline", "Glow" };
             CreateChoiceButton(
-                controls.transform,
+                afterFont,
                 "TitleEffectSelector",
                 "Title FX: " + titleEffects[titleEffect],
                 new Vector2(14, -583),
@@ -1719,7 +1716,7 @@ namespace Albummodelite
 
             // Randomize cover
             CreateChoiceButton(
-                controls.transform,
+                afterFont,
                 "RandomizeCover",
                 "Randomize Cover",
                 new Vector2(154, -583),
@@ -1734,7 +1731,7 @@ namespace Albummodelite
             );
 
             CreatePanelText(
-                controls.transform,
+                afterFont,
                 "CenterHint",
                 "Tip: click a member portrait above to choose the center idol.",
                 8,
@@ -1746,7 +1743,7 @@ namespace Albummodelite
             );
 
             CreatePanelText(
-                controls.transform,
+                afterFont,
                 "ScrollHint",
                 "Mouse wheel to scroll cover options",
                 8,
@@ -1766,6 +1763,161 @@ namespace Albummodelite
             // For this first pass, rebuild only when the player changes pages.
             // The preview updates immediately. Selected outlines will be refreshed
             // the next time DrawCoverDesigner() runs.
+        }
+
+        private void CreateBackgroundPicker(Transform parent)
+        {
+            if (parent == null)
+                return;
+
+            const float rootWidth = 289f;
+            const float rootHeight = 64f;
+            const float viewportWidth = 279f;
+            const float viewportHeight = 40f;
+            const float thumbWidth = 42f;
+            const float thumbHeight = 36f;
+            const float thumbPitch = 48f;
+            const float sidePadding = 5f;
+
+            CreatePanelText(
+                parent,
+                "BackgroundSelected",
+                coverBackgrounds.Count > 0
+                    ? AlbumBackgroundCatalog.GetDisplayName(selectedBackgroundKey, selectedBackground)
+                    : "No images found",
+                8,
+                FontStyle.Normal,
+                new Color(0.42f, 0.40f, 0.55f),
+                new Vector2(92, -247),
+                new Vector2(207, 18),
+                TextAnchor.MiddleRight
+            );
+
+            GameObject root = new GameObject("BackgroundPickerScroll");
+            root.transform.SetParent(parent, false);
+            RectTransform rootRect = root.AddComponent<RectTransform>();
+            rootRect.anchorMin = new Vector2(0f, 1f);
+            rootRect.anchorMax = new Vector2(0f, 1f);
+            rootRect.pivot = new Vector2(0f, 1f);
+            rootRect.sizeDelta = new Vector2(rootWidth, rootHeight);
+            rootRect.anchoredPosition = new Vector2(12f, -267f);
+
+            Image rootImage = root.AddComponent<Image>();
+            rootImage.color = new Color(0.95f, 0.95f, 0.97f, 0.55f);
+
+            GameObject viewport = new GameObject("Viewport");
+            viewport.transform.SetParent(root.transform, false);
+            RectTransform viewportRect = viewport.AddComponent<RectTransform>();
+            viewportRect.anchorMin = new Vector2(0f, 1f);
+            viewportRect.anchorMax = new Vector2(0f, 1f);
+            viewportRect.pivot = new Vector2(0f, 1f);
+            viewportRect.sizeDelta = new Vector2(viewportWidth, viewportHeight);
+            viewportRect.anchoredPosition = new Vector2(5f, -2f);
+            Image viewportImage = viewport.AddComponent<Image>();
+            viewportImage.color = Color.clear;
+            viewportImage.raycastTarget = true;
+            viewport.AddComponent<RectMask2D>();
+
+            GameObject contentObject = new GameObject("BackgroundContent");
+            contentObject.transform.SetParent(viewport.transform, false);
+            RectTransform contentRect = contentObject.AddComponent<RectTransform>();
+            contentRect.anchorMin = new Vector2(0f, 1f);
+            contentRect.anchorMax = new Vector2(0f, 1f);
+            contentRect.pivot = new Vector2(0f, 1f);
+            float requiredWidth = coverBackgrounds.Count > 0
+                ? sidePadding * 2f + coverBackgrounds.Count * thumbPitch - (thumbPitch - thumbWidth)
+                : viewportWidth;
+            contentRect.sizeDelta = new Vector2(Mathf.Max(viewportWidth, requiredWidth), viewportHeight);
+            contentRect.anchoredPosition = Vector2.zero;
+
+            for (int i = 0; i < coverBackgrounds.Count; i++)
+            {
+                int index = i;
+                GameObject thumb = new GameObject("Background_" + i);
+                thumb.transform.SetParent(contentObject.transform, false);
+
+                RectTransform thumbRect = thumb.AddComponent<RectTransform>();
+                thumbRect.anchorMin = new Vector2(0f, 1f);
+                thumbRect.anchorMax = new Vector2(0f, 1f);
+                thumbRect.pivot = new Vector2(0f, 1f);
+                thumbRect.sizeDelta = new Vector2(thumbWidth, thumbHeight);
+                // Side padding keeps the first selected outline fully inside the mask instead
+                // of shaving pixels off the left edge.
+                thumbRect.anchoredPosition = new Vector2(sidePadding + i * thumbPitch, -2f);
+
+                Image image = thumb.AddComponent<Image>();
+                image.sprite = coverBackgrounds[i];
+                image.preserveAspect = true;
+
+                Outline outline = thumb.AddComponent<Outline>();
+                outline.effectColor = i == selectedBackground
+                    ? new Color(0.42f, 0.32f, 0.90f)
+                    : new Color(0.80f, 0.80f, 0.86f);
+                outline.effectDistance = i == selectedBackground
+                    ? new Vector2(2f, -2f)
+                    : new Vector2(1f, -1f);
+
+                Button button = thumb.AddComponent<Button>();
+                button.targetGraphic = image;
+                button.onClick.AddListener(() =>
+                {
+                    selectedBackground = index;
+                    selectedBackgroundKey = AlbumBackgroundCatalog.GetKey(index);
+                    RefreshUI();
+                });
+            }
+
+            GameObject scrollbarObject = new GameObject("BackgroundScrollbar");
+            scrollbarObject.transform.SetParent(root.transform, false);
+            RectTransform scrollbarRect = scrollbarObject.AddComponent<RectTransform>();
+            scrollbarRect.anchorMin = new Vector2(0f, 1f);
+            scrollbarRect.anchorMax = new Vector2(0f, 1f);
+            scrollbarRect.pivot = new Vector2(0f, 1f);
+            scrollbarRect.sizeDelta = new Vector2(viewportWidth - 8f, 10f);
+            scrollbarRect.anchoredPosition = new Vector2(9f, -49f);
+            Image scrollbarTrack = scrollbarObject.AddComponent<Image>();
+            scrollbarTrack.color = new Color(0.82f, 0.82f, 0.87f, 0.90f);
+
+            GameObject slidingArea = new GameObject("SlidingArea");
+            slidingArea.transform.SetParent(scrollbarObject.transform, false);
+            RectTransform slidingRect = slidingArea.AddComponent<RectTransform>();
+            slidingRect.anchorMin = Vector2.zero;
+            slidingRect.anchorMax = Vector2.one;
+            slidingRect.offsetMin = new Vector2(2f, 2f);
+            slidingRect.offsetMax = new Vector2(-2f, -2f);
+
+            GameObject handle = new GameObject("Handle");
+            handle.transform.SetParent(slidingArea.transform, false);
+            RectTransform handleRect = handle.AddComponent<RectTransform>();
+            handleRect.anchorMin = Vector2.zero;
+            handleRect.anchorMax = Vector2.one;
+            handleRect.offsetMin = Vector2.zero;
+            handleRect.offsetMax = Vector2.zero;
+            Image handleImage = handle.AddComponent<Image>();
+            handleImage.color = new Color(0.43f, 0.37f, 0.72f, 0.95f);
+
+            Scrollbar scrollbar = scrollbarObject.AddComponent<Scrollbar>();
+            scrollbar.direction = Scrollbar.Direction.LeftToRight;
+            scrollbar.handleRect = handleRect;
+            scrollbar.targetGraphic = handleImage;
+
+            ScrollRect scroll = root.AddComponent<ScrollRect>();
+            scroll.viewport = viewportRect;
+            scroll.content = contentRect;
+            scroll.horizontal = true;
+            scroll.vertical = false;
+            scroll.movementType = ScrollRect.MovementType.Clamped;
+            scroll.inertia = true;
+            scroll.decelerationRate = 0.135f;
+            scroll.scrollSensitivity = 24f;
+            scroll.horizontalScrollbar = scrollbar;
+            scroll.horizontalScrollbarVisibility = ScrollRect.ScrollbarVisibility.Permanent;
+            scroll.horizontalScrollbarSpacing = 0f;
+            scroll.horizontalNormalizedPosition = Mathf.Clamp01(backgroundScrollPosition);
+            scroll.onValueChanged.AddListener(value =>
+            {
+                backgroundScrollPosition = Mathf.Clamp01(value.x);
+            });
         }
 
         private void DrawLargeCoverPreview()
@@ -1864,9 +2016,7 @@ namespace Albummodelite
             titleText.resizeTextMinSize = Mathf.Max(12, Mathf.RoundToInt(size * 0.040f));
             titleText.resizeTextMaxSize = autoTitleSize;
             titleText.color = titleColors[selectedTextColor];
-            titleText.fontStyle = selectedFont == 2
-                ? FontStyle.Bold
-                : FontStyle.Normal;
+            titleText.fontStyle = FontStyle.Normal;
             titleText.horizontalOverflow = HorizontalWrapMode.Overflow;
             titleText.verticalOverflow = VerticalWrapMode.Overflow;
             titleText.raycastTarget = false;
@@ -1908,7 +2058,9 @@ namespace Albummodelite
             sr.offsetMax = Vector2.zero;
 
             Text subtitleText = subtitleObj.AddComponent<Text>();
-            subtitleText.font = AlbumUiResources.GetGameFont();
+            subtitleText.font = albumFonts != null && selectedFont >= 0 && selectedFont < albumFonts.Length
+                ? albumFonts[selectedFont]
+                : AlbumUiResources.GetGameFont();
             subtitleText.text = showGroupName ? GetCoverSubtitle() : "";
             subtitleText.fontSize = Mathf.Max(8, Mathf.RoundToInt(size * 0.03f));
             subtitleText.fontStyle = FontStyle.Normal;
@@ -2899,7 +3051,10 @@ namespace Albummodelite
             selectedTheme = UnityEngine.Random.Range(0, themeNames.Length);
 
             if (coverBackgrounds.Count > 0)
+            {
                 selectedBackground = UnityEngine.Random.Range(0, coverBackgrounds.Count);
+                selectedBackgroundKey = AlbumBackgroundCatalog.GetKey(selectedBackground);
+            }
 
             selectedLayout = UnityEngine.Random.Range(0, 5);
             selectedFont = UnityEngine.Random.Range(0, fontNames.Length);
@@ -2983,7 +3138,7 @@ namespace Albummodelite
                 260,
                 "Background",
                 coverBackgrounds.Count > 0
-                    ? "Background " + (selectedBackground + 1)
+                    ? AlbumBackgroundCatalog.GetDisplayName(selectedBackgroundKey, selectedBackground)
                     : "None"
             );
 
@@ -3061,76 +3216,38 @@ namespace Albummodelite
 
         private void LoadCoverBackgrounds()
         {
+            // Throttled signature refresh lets users drop new images into AlbumBackgrounds
+            // while the game is running without rescanning the filesystem on every button click.
+            AlbumBackgroundCatalog.Refresh(false);
             coverBackgrounds.Clear();
+            coverBackgrounds.AddRange(AlbumBackgroundCatalog.GetSprites());
 
-            string folder = AlbumPaths.BackgroundsDirectory;
-
-            if (!Directory.Exists(folder))
+            if (coverBackgrounds.Count == 0)
             {
-                Directory.CreateDirectory(folder);
+                selectedBackground = 0;
                 return;
             }
 
-            foreach (string file in Directory.GetFiles(folder, "*.png"))
-            {
-                Texture2D tex = new Texture2D(2, 2);
-
-                if (!ImageConversion.LoadImage(tex, File.ReadAllBytes(file)))
-                    continue;
-
-                Sprite sprite = Sprite.Create(
-                    tex,
-                    new Rect(0, 0, tex.width, tex.height),
-                    new Vector2(0.5f, 0.5f)
-                );
-
-                coverBackgrounds.Add(sprite);
-            }
+            selectedBackground = AlbumBackgroundCatalog.GetIndex(
+                selectedBackgroundKey,
+                selectedBackground);
+            if (string.IsNullOrEmpty(selectedBackgroundKey))
+                selectedBackgroundKey = AlbumBackgroundCatalog.GetKey(selectedBackground);
         }
 
         private void LoadAlbumFonts()
         {
-            if (albumFonts != null && albumFonts.Length == 4)
-                return;
+            AlbumFontCatalog.EnsureLoaded();
+            fontNames = AlbumFontCatalog.GetDisplayNames();
+            albumFonts = AlbumFontCatalog.GetFonts();
 
-            albumFonts = new Font[4];
-
-            string[] names =
+            if (albumFonts == null || albumFonts.Length == 0)
             {
-                "Georgia",
-                "Times New Roman",
-                "Arial Black",
-                "Segoe Script"
-            };
-
-            for (int i = 0; i < names.Length; i++)
-            {
-                Font font = null;
-
-                try
-                {
-                    font = Font.CreateDynamicFontFromOSFont(
-                        names[i],
-                        32
-                    );
-                }
-                catch (Exception ex)
-                {
-                    Debug.LogWarning(
-                        "[Album] Could not load font " +
-                        names[i] +
-                        ": " +
-                        ex.Message
-                    );
-                }
-
-                if (font == null)
-                {
-                    font = AlbumUiResources.GetGameFont();
-                }
-
-                albumFonts[i] = font;
+                albumFonts = new[] { AlbumUiResources.GetGameFont() };
+                fontNames = new[] { "Game Font" };
             }
+
+            selectedFont = Mathf.Clamp(selectedFont, 0, albumFonts.Length - 1);
         }
 
         // ---------------------------------------------------------------------
@@ -3406,6 +3523,8 @@ namespace Albummodelite
 
             selectedTheme = 0;
             selectedBackground = 0;
+            selectedBackgroundKey = "";
+            backgroundScrollPosition = 0f;
             selectedLayout = 2;
             selectedTextColor = 0;
 

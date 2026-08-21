@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using UnityEngine;
 using UnityEngine.UI;
@@ -9,9 +8,6 @@ namespace Albummodelite
 {
     public static class AlbumCoverRenderer
     {
-        private static readonly List<Sprite> backgrounds = new List<Sprite>();
-        private static Font[] albumFonts;
-
         private static readonly Color[] titleColors =
         {
             Color.white,
@@ -34,8 +30,8 @@ namespace Albummodelite
             if (album == null)
                 return null;
 
-            LoadBackgrounds();
-            LoadFonts();
+            AlbumBackgroundCatalog.EnsureLoaded();
+            AlbumFontCatalog.EnsureLoaded();
 
             GameObject holder = new GameObject(objectName);
             holder.transform.SetParent(parent, false);
@@ -50,15 +46,12 @@ namespace Albummodelite
             Image holderImage = holder.AddComponent<Image>();
             holderImage.color = GetThemeFallbackColor(album.ThemeIndex);
 
-            if (backgrounds.Count > 0)
+            Sprite background = AlbumBackgroundCatalog.Resolve(
+                album.BackgroundKey,
+                album.BackgroundIndex);
+            if (background != null)
             {
-                int bgIndex = Mathf.Clamp(
-                    album.BackgroundIndex,
-                    0,
-                    backgrounds.Count - 1
-                );
-
-                holderImage.sprite = backgrounds[bgIndex];
+                holderImage.sprite = background;
                 holderImage.type = Image.Type.Simple;
                 holderImage.preserveAspect = false;
                 holderImage.color = Color.white;
@@ -96,8 +89,7 @@ namespace Albummodelite
             ApplyTitlePosition(tr, album.TitlePosition);
 
             Text titleText = titleObj.AddComponent<Text>();
-            titleText.font =
-                albumFonts[Mathf.Clamp(album.FontIndex, 0, albumFonts.Length - 1)];
+            titleText.font = AlbumFontCatalog.Resolve(album.FontKey, album.FontIndex);
             titleText.text = string.IsNullOrWhiteSpace(album.Title)
                 ? "UNTITLED"
                 : album.Title.ToUpperInvariant();
@@ -107,9 +99,7 @@ namespace Albummodelite
             titleText.resizeTextMinSize = Mathf.Max(9, Mathf.RoundToInt(size * 0.035f));
             titleText.resizeTextMaxSize = titleText.fontSize;
             titleText.color = textColor;
-            titleText.fontStyle = album.FontIndex == 2
-                ? FontStyle.Bold
-                : FontStyle.Normal;
+            titleText.fontStyle = FontStyle.Normal;
             titleText.raycastTarget = false;
 
             ApplyTitleEffect(titleObj, album, textColor);
@@ -144,7 +134,7 @@ namespace Albummodelite
                 sr.offsetMax = Vector2.zero;
 
                 Text st = subtitle.AddComponent<Text>();
-                st.font = AlbumUiResources.GetGameFont();
+                st.font = AlbumFontCatalog.Resolve(album.FontKey, album.FontIndex);
                 st.text = string.IsNullOrEmpty(album.GroupName)
                     ? "GROUP"
                     : album.GroupName.ToUpperInvariant();
@@ -680,65 +670,6 @@ namespace Albummodelite
             }
         }
 
-        private static void LoadBackgrounds()
-        {
-            if (backgrounds.Count > 0)
-                return;
 
-            string folder = AlbumPaths.BackgroundsDirectory;
-
-            if (!Directory.Exists(folder))
-                return;
-
-            foreach (string file in Directory.GetFiles(folder, "*.png"))
-            {
-                Texture2D tex = new Texture2D(2, 2);
-
-                if (!ImageConversion.LoadImage(tex, File.ReadAllBytes(file)))
-                    continue;
-
-                backgrounds.Add(
-                    Sprite.Create(
-                        tex,
-                        new Rect(0, 0, tex.width, tex.height),
-                        new Vector2(0.5f, 0.5f)
-                    )
-                );
-            }
-        }
-
-        private static void LoadFonts()
-        {
-            if (albumFonts != null && albumFonts.Length == 4)
-                return;
-
-            albumFonts = new Font[4];
-
-            string[] names =
-            {
-                "Georgia",
-                "Times New Roman",
-                "Arial Black",
-                "Segoe Script"
-            };
-
-            for (int i = 0; i < names.Length; i++)
-            {
-                Font font = null;
-
-                try
-                {
-                    font = Font.CreateDynamicFontFromOSFont(names[i], 28);
-                }
-                catch
-                {
-                }
-
-                if (font == null)
-                    font = AlbumUiResources.GetGameFont();
-
-                albumFonts[i] = font;
-            }
-        }
     }
 }

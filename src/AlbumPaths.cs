@@ -6,9 +6,19 @@ namespace Albummodelite
 {
     internal static class AlbumPaths
     {
+        internal static readonly string ModDirectory = ResolveModDirectory();
+
         internal static readonly string BackgroundsDirectory = Path.Combine(
-            ResolveModDirectory(),
+            ModDirectory,
             "AlbumBackgrounds");
+
+        internal static readonly string FontsDirectory = Path.Combine(
+            ModDirectory,
+            "AlbumFonts");
+
+        internal static readonly string CustomFontsDirectory = Path.Combine(
+            ModDirectory,
+            "CustomFonts");
 
         private static string ResolveModDirectory()
         {

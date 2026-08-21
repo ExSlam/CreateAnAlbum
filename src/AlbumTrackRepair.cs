@@ -317,55 +317,31 @@ namespace CreateAnAlbumChartTrackEnhancements
 
     internal static class AlbumPersistenceBridge
     {
-        internal static bool EnsurePlayerAlbumsLoaded(
-            string reason)
+        internal static bool EnsurePlayerAlbumsLoaded(string reason)
         {
             try
             {
-                bool hasPlayerAlbum =
-                    Albums.AlbumList != null &&
-                    Albums.AlbumList.Any(a =>
-                        a != null &&
-                        a.PlayerAlbum &&
-                        a.Released
+                // 4.1.0: never force a second disk reload just because a campaign has no
+                // released player albums. That old workaround could discard dirty production
+                // state before the next vanilla save. EnsureCurrentSaveLoaded is idempotent and
+                // only loads when the active save/checkpoint identity actually changed.
+                if (!AlbumPersistence.EnsureCurrentSaveLoaded())
+                {
+                    Debug.LogWarning(
+                        "[AlbumPersistenceBridge] Album state is not ready during " + reason + "."
                     );
+                    return false;
+                }
 
-                if (hasPlayerAlbum)
-                    return true;
-
-                Debug.Log(
-                    "[AlbumPersistenceBridge] No player albums in RAM during " +
-                    reason +
-                    ". Forcing the known-good AlbumPersistence.Load()."
-                );
-
-                // The user-confirmed FreshRestart_DiscographyFix DLL owns
-                // the persistence implementation. We only ask it to load;
-                // we do not replace or rebuild its save code.
-                AlbumPersistence.Load();
-
-                hasPlayerAlbum =
-                    Albums.AlbumList != null &&
+                return Albums.AlbumList != null &&
                     Albums.AlbumList.Any(a =>
-                        a != null &&
-                        a.PlayerAlbum &&
-                        a.Released
-                    );
-
-                Debug.Log(
-                    "[AlbumPersistenceBridge] Player album present after load: " +
-                    hasPlayerAlbum
-                );
-
-                return hasPlayerAlbum;
+                        a != null && a.PlayerAlbum && a.Released);
             }
             catch (Exception ex)
             {
                 Debug.LogWarning(
-                    "[AlbumPersistenceBridge] Forced load failed: " +
-                    ex.Message
+                    "[AlbumPersistenceBridge] Save-aware load check failed: " + ex.Message
                 );
-
                 return false;
             }
         }

@@ -64,6 +64,7 @@ namespace Albummodelite
         private static MethodInfo getVanillaGroupMethod;
         private static MethodInfo getDisplayGirlMethod;
         private static MethodInfo getDisplayGirlByIdMethod;
+        private static MethodInfo queueNewsMethod;
 
         internal static RivalsRebornSessionState State { get { return state; } }
         internal static bool IsReady { get { return state == RivalsRebornSessionState.Ready; } }
@@ -194,6 +195,23 @@ namespace Albummodelite
             }
         }
 
+        internal static bool TryQueueNews(string text)
+        {
+            if (!IsReady || queueNewsMethod == null || string.IsNullOrWhiteSpace(text))
+                return false;
+
+            try
+            {
+                queueNewsMethod.Invoke(null, new object[] { text });
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning("[CreateAlbum/RR] Could not queue RR release news: " + ex.Message);
+                return false;
+            }
+        }
+
         private static bool BindApi(Assembly rrAssembly)
         {
             rrType = rrAssembly.GetType(RootTypeName, false);
@@ -205,6 +223,7 @@ namespace Albummodelite
             rrStateField = rrType.GetField("State", staticFlags);
             ensureInitMethod = rrType.GetMethod("EnsureInit", staticFlags, null, Type.EmptyTypes, null);
             getVanillaGroupMethod = rrType.GetMethod("GetVanillaGroup", staticFlags, null, new Type[] { typeof(int) }, null);
+            queueNewsMethod = rrType.GetMethod("QueueNews", staticFlags, null, new Type[] { typeof(string) }, null);
 
             if (rrStateField == null)
                 return false;
@@ -378,6 +397,7 @@ namespace Albummodelite
             getVanillaGroupMethod = null;
             getDisplayGirlMethod = null;
             getDisplayGirlByIdMethod = null;
+            queueNewsMethod = null;
             if (clearAssembly)
                 assembly = null;
         }

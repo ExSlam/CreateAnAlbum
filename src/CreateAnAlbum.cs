@@ -1,5 +1,6 @@
 using HarmonyLib;
 using UnityEngine;
+using CreateAnAlbumGroupRules;
 
 namespace Albummodelite
 {
@@ -30,6 +31,7 @@ namespace Albummodelite
         private void OnDestroy()
         {
             AlbumPopupHost.Reset();
+            AlbumProductionManager.Shutdown();
             AlbumPersistence.Shutdown();
             // RR availability is deliberately latched until the main menu is reached.
             // A gameplay object being recreated (for example while loading another save) must not
@@ -39,6 +41,7 @@ namespace Albummodelite
         private void Update()
         {
             AlbumPersistence.Tick();
+            AlbumProductionManager.Tick();
 
             if (Input.GetKeyDown(KeyCode.F2))
                 OpenCreateAlbum();
@@ -57,6 +60,9 @@ namespace Albummodelite
                 Debug.LogWarning("[CreateAlbum] Album data is not ready for this save.");
                 return false;
             }
+
+            if (AlbumProductionManager.TryOpenExisting(queueBehindCurrentPopup))
+                return true;
 
             if (createPopup == null)
                 createPopup = GetComponent<AlbumPopup>() ?? gameObject.AddComponent<AlbumPopup>();
@@ -106,7 +112,11 @@ namespace Albummodelite
             if (!__instance.IsGameScene || mainScript.IsMainMenu())
             {
                 AlbumPopupHost.Reset();
+                AlbumProductionManager.Shutdown();
                 AlbumPersistence.Shutdown();
+                AlbumFontCatalog.Shutdown();
+                AlbumBackgroundCatalog.Shutdown();
+                IMDataCoreIntegration.EndGameplaySession();
                 RivalsRebornIntegration.EndGameplaySession();
                 return;
             }

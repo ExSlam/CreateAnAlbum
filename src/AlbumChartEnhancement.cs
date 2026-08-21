@@ -10,7 +10,6 @@ namespace CreateAnAlbumChartTrackEnhancements
     internal static class AlbumChartEnhancement
     {
         private const int MaximumEntries = 20;
-        private const int CoverEntries = 4;
 
         private static GameObject chartOverlay;
 
@@ -368,6 +367,10 @@ namespace CreateAnAlbumChartTrackEnhancements
                         pitch
                     );
                 }
+
+                AlbumChartCoverVirtualizer virtualizer =
+                    scrollRoot.AddComponent<AlbumChartCoverVirtualizer>();
+                virtualizer.Configure(scroll, lr, entries, pitch);
             }
 
             // Keep the close control tied to the fixed chart panel on every aspect ratio.
@@ -587,31 +590,6 @@ namespace CreateAnAlbumChartTrackEnhancements
                     -1f
                 );
 
-            if (rank <= CoverEntries)
-            {
-                try
-                {
-                    // The cover renderer uses a square pixel size. 84 matches
-                    // the Singles-chart-sized row at 1366x768.
-                    AlbumCoverRenderer.Build(
-                        coverSlot.transform,
-                        album,
-                        "ChartCover_" +
-                            rank,
-                        Vector2.zero,
-                        84f
-                    );
-                }
-                catch (Exception ex)
-                {
-                    Debug.LogWarning(
-                        "[AlbumChart] Cover failed for " +
-                        album.Title +
-                        ": " +
-                        ex.Message
-                    );
-                }
-            }
 
             string owner =
                 !string.IsNullOrEmpty(

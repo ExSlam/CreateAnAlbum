@@ -2,7 +2,7 @@
   "Title": "Create An Album",
   "Description": "Create, release, track and chart albums. Uses HarmonyIntegration, Mod Localization and Mod Buttons; Rivals Reborn support is optional.",
   "Author": "JordanSS",
-  "Version": "4.0.0",
+  "Version": "4.1.1",
   "Tags": ["gameplay", "ui"],
   "HarmonyID": "com.jordanss.createanalbum"
 }

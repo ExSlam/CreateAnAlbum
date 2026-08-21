@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using UnityEngine;
+using CreateAnAlbumGroupRules;
 
 namespace Albummodelite
 {
@@ -14,8 +15,11 @@ namespace Albummodelite
         [Serializable]
         private class AlbumSaveFile
         {
-            public int Version = 2;
+            public int Version = 3;
+            public long WrittenUtcTicks;
             public long LastChartProcessedTicks;
+            public AlbumProductionProject ProductionProject;
+            public bool LegacyProductionMigrationCompleted;
             public List<AlbumSaveEntry> Albums =
                 new List<AlbumSaveEntry>();
         }
@@ -54,8 +58,12 @@ namespace Albummodelite
 
             public int ThemeIndex;
             public int BackgroundIndex;
+            public string BackgroundKey = "";
             public int LayoutIndex;
             public int FontIndex;
+            public string FontKey = "";
+            public int ReleaseKind;
+            public bool DebutFanRewardGranted;
             public int TextColorIndex;
             public int TitlePosition;
 
@@ -78,9 +86,13 @@ namespace Albummodelite
         private static string pendingCandidateId = "";
         private static int pendingStableFrames;
         private static int pendingRetryFrames;
+        private static int pendingImDataCoreWaitFrames;
+        private const int MaxImDataCoreBootstrapWaitFrames = 300;
         private static string loadedSaveId = "";
         private static long lastChartProcessedTicks;
         private static int loadGeneration;
+        private static int loadingFileVersion = 3;
+        private static bool legacyProductionMigrationCompleted;
 
         public static string CurrentSaveId
         {
@@ -148,8 +160,10 @@ namespace Albummodelite
         public static void Initialize()
         {
             Debug.Log(
-                "[AlbumSave] *** PERSISTENCE v4.0 INITIALIZED ***"
+                "[AlbumSave] *** PERSISTENCE v4.1 / SCHEMA v3 INITIALIZED ***"
             );
+
+            IMDataCoreIntegration.BeginGameplaySession();
 
             SaveManager.SaveEvent -= OnGameSave;
             SaveManager.LoadEvent -= OnGameLoad;
@@ -159,16 +173,22 @@ namespace Albummodelite
 
             initialized = true;
             dirty = false;
-            pendingLoad = false;
+            // mainScript.Start can run after the vanilla SavedData assignment/LoadEvent on
+            // some scene-load paths. Always schedule one stabilized initial read so album,
+            // production, and chart state do not depend on the player opening F2/F3/F8 first.
+            pendingLoad = true;
             pendingCandidateId = "";
             pendingStableFrames = 0;
             pendingRetryFrames = 0;
+            pendingImDataCoreWaitFrames = 0;
             loadedSaveId = "";
             lastChartProcessedTicks = 0L;
             loadGeneration = 0;
+            loadingFileVersion = 3;
+            legacyProductionMigrationCompleted = false;
 
             Debug.Log(
-                "[AlbumSave] Save/load events registered."
+                "[AlbumSave] Save/load events registered; initial save-state load scheduled."
             );
         }
 
@@ -186,9 +206,14 @@ namespace Albummodelite
             pendingCandidateId = "";
             pendingStableFrames = 0;
             pendingRetryFrames = 0;
+            pendingImDataCoreWaitFrames = 0;
             loadedSaveId = "";
             lastChartProcessedTicks = 0L;
             loadGeneration = 0;
+            loadingFileVersion = 3;
+            legacyProductionMigrationCompleted = false;
+            AlbumSaveIdentity.Reset();
+            AlbumProductionManager.Shutdown();
         }
 
         private static void OnGameSave()
@@ -197,7 +222,15 @@ namespace Albummodelite
                 "[AlbumSave] Idol Manager save detected."
             );
 
-            FlushDirty();
+            string targetId = GetSaveId();
+            bool targetChanged =
+                !string.IsNullOrEmpty(targetId) &&
+                !string.Equals(loadedSaveId, targetId, StringComparison.Ordinal);
+
+            // A Save As/manual/autosave fork must get its own supplemental checkpoint even
+            // when Create An Album itself has not changed since the previous vanilla save.
+            FlushDirty(targetChanged);
+            AlbumSaveIdentity.ClearPendingSaveTarget();
         }
 
         private static void OnGameLoad()
@@ -207,15 +240,27 @@ namespace Albummodelite
 
             AlbumPopupHost.Reset();
             AlbumChartUpdatePopup.ResetForSaveLoad();
-            pendingLoad = true;
+            AlbumProductionManager.Shutdown();
             pendingCandidateId = "";
             pendingStableFrames = 0;
             pendingRetryFrames = 0;
+            pendingImDataCoreWaitFrames = 0;
             loadedSaveId = "";
 
+            string candidate = GetSaveId();
+            if (IMDataCoreIntegration.IsReady &&
+                !string.IsNullOrEmpty(candidate) &&
+                LoadForSaveId(candidate))
+            {
+                pendingLoad = false;
+                Debug.Log("[AlbumSave] Loaded checkpoint-aware state from IM Data Core during vanilla LoadEvent.");
+                return;
+            }
+
+            pendingLoad = true;
             Debug.Log(
                 "[AlbumSave] Idol Manager load detected. " +
-                "Waiting for the selected save context to stabilize."
+                "Waiting for the concrete save context to stabilize."
             );
         }
 
@@ -238,6 +283,21 @@ namespace Albummodelite
                 pendingCandidateId = candidate;
                 pendingStableFrames = 1;
                 pendingRetryFrames = 0;
+            }
+
+            if (IMDataCoreIntegration.IsBootstrapping)
+            {
+                pendingImDataCoreWaitFrames++;
+                if (pendingImDataCoreWaitFrames < MaxImDataCoreBootstrapWaitFrames)
+                    return;
+
+                IMDataCoreIntegration.StopRetryingForSession(
+                    "IM Data Core did not report ready during the initial load window.");
+                pendingImDataCoreWaitFrames = 0;
+            }
+            else
+            {
+                pendingImDataCoreWaitFrames = 0;
             }
 
             if (pendingRetryFrames > 0)
@@ -264,6 +324,7 @@ namespace Albummodelite
             pendingCandidateId = "";
             pendingStableFrames = 0;
             pendingRetryFrames = 0;
+            pendingImDataCoreWaitFrames = 0;
         }
 
         public static bool EnsureCurrentSaveLoaded()
@@ -275,6 +336,15 @@ namespace Albummodelite
 
             if (string.IsNullOrEmpty(current))
                 return false;
+
+            // Do not let an early F2/F3/F8 open force a standalone load while an installed
+            // IM Data Core is still bringing its checkpoint store online. Tick() owns the
+            // bounded wait and will deliberately latch to fallback if IMDC never becomes ready.
+            if (IMDataCoreIntegration.IsBootstrapping)
+            {
+                pendingLoad = true;
+                return false;
+            }
 
             if (string.Equals(
                     loadedSaveId,
@@ -294,6 +364,7 @@ namespace Albummodelite
                 pendingCandidateId = "";
                 pendingStableFrames = 0;
                 pendingRetryFrames = 0;
+                pendingImDataCoreWaitFrames = 0;
             }
             else
             {
@@ -301,6 +372,7 @@ namespace Albummodelite
                 pendingCandidateId = current;
                 pendingStableFrames = 0;
                 pendingRetryFrames = 60;
+                pendingImDataCoreWaitFrames = 0;
             }
 
             return result;
@@ -319,101 +391,146 @@ namespace Albummodelite
             MarkDirty();
         }
 
-        private static void FlushDirty()
+        /// <summary>
+        /// Popup_Load_Story.Do_New_Save generates its final physical save directory only after
+        /// SaveEvent has already fired. A caller-level transpiler supplies that concrete path
+        /// immediately before vanilla writes SavedData so the standalone mirror follows the
+        /// same branch/checkpoint instead of remaining attached to a temporary alias.
+        /// </summary>
+        internal static void CaptureConcreteSaveWriteTarget(string dataFileName)
         {
-            if (!initialized || !dirty)
+            if (!initialized || string.IsNullOrEmpty(dataFileName))
+                return;
+
+            try
+            {
+                AlbumSaveIdentity.CaptureSaveTarget(dataFileName);
+                string targetId = GetFallbackSaveId();
+                if (string.IsNullOrEmpty(targetId) ||
+                    string.Equals(loadedSaveId, targetId, StringComparison.Ordinal))
+                    return;
+
+                loadedSaveId = targetId;
+                AlbumProductionManager.RebindSaveId(targetId);
+
+                AlbumSaveFile file = BuildSaveFile();
+                string json = JsonUtility.ToJson(file, true);
+                string path = GetPathForSaveId(targetId);
+                if (file.Albums.Count == 0 && ExistingFileHasAlbums(path))
+                {
+                    Debug.LogError("[AlbumSave] EMPTY SAVE BLOCKED for concrete Save As target: " + path);
+                    return;
+                }
+
+                WriteAllTextAtomic(path, json);
+                dirty = false;
+                AlbumSaveIdentity.ClearPendingSaveTarget();
+                Debug.Log("[AlbumSave] Bound supplemental state to generated save path " + targetId + ".");
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning("[AlbumSave] Could not bind generated save path: " + ex.Message);
+            }
+        }
+
+        private static void FlushDirty(bool forceCheckpoint = false)
+        {
+            if (!initialized || (!dirty && !forceCheckpoint))
                 return;
 
             try
             {
                 string saveId = GetSaveId();
-
                 if (string.IsNullOrEmpty(saveId))
                 {
-                    Debug.LogWarning(
-                        "[AlbumSave] Save blocked: no stable save ID."
-                    );
+                    Debug.LogWarning("[AlbumSave] Save blocked: no stable save identity.");
                     return;
                 }
 
                 if (pendingLoad)
                 {
-                    Debug.LogWarning(
-                        "[AlbumSave] Save deferred during load transition."
-                    );
+                    Debug.LogWarning("[AlbumSave] Save deferred during load transition.");
                     return;
                 }
 
-                if (!string.Equals(
-                        loadedSaveId,
-                        saveId,
-                        StringComparison.Ordinal))
+                // Save As / manual-slot writes are legitimate forks. The vanilla caller prefix has
+                // already captured the target path before SaveEvent runs, so snapshot the currently
+                // loaded state into that new identity rather than rejecting the write.
+                if (!string.Equals(loadedSaveId, saveId, StringComparison.Ordinal))
                 {
-                    Debug.LogWarning(
-                        "[AlbumSave] Save blocked because album data for " +
-                        saveId +
-                        " has not been loaded yet."
-                    );
-                    return;
+                    if (string.IsNullOrEmpty(loadedSaveId))
+                    {
+                        Debug.LogWarning("[AlbumSave] Save blocked because no album state is loaded.");
+                        return;
+                    }
+                    Debug.Log("[AlbumSave] Forking album state into save target " + saveId + ".");
+                    loadedSaveId = saveId;
+                    AlbumProductionManager.RebindSaveId(saveId);
                 }
 
                 Albums.DeduplicateInPlace();
+                AlbumSaveFile file = BuildSaveFile();
+                string json = JsonUtility.ToJson(file, true);
 
-                string path =
-                    GetPathForSaveId(saveId);
+                bool committed = false;
+                if (IMDataCoreIntegration.IsReady)
+                    committed = IMDataCoreIntegration.TrySetState(json);
 
-                if (Albums.AlbumList.Count == 0 &&
-                    ExistingFileHasAlbums(path))
+                // Always keep a checkpoint-aware standalone mirror when a concrete vanilla
+                // path is known. This gives clean fallback if IM Data Core is later disabled.
+                string fallbackId = GetFallbackSaveId();
+                if (!string.IsNullOrEmpty(fallbackId))
                 {
-                    Debug.LogError(
-                        "[AlbumSave] EMPTY SAVE BLOCKED. " +
-                        "Existing album data was preserved: " +
-                        path
-                    );
-                    return;
+                    string fallbackPath = GetPathForSaveId(fallbackId);
+                    if (file.Albums.Count == 0 && ExistingFileHasAlbums(fallbackPath))
+                    {
+                        Debug.LogError("[AlbumSave] EMPTY SAVE BLOCKED. Existing album data was preserved: " + fallbackPath);
+                        return;
+                    }
+                    WriteAllTextAtomic(fallbackPath, json);
+                    committed = true;
                 }
 
-                AlbumSaveFile file =
-                    new AlbumSaveFile();
-                file.LastChartProcessedTicks = lastChartProcessedTicks;
-
-                foreach (AlbumData album in Albums.AlbumList)
+                // If there is no concrete path yet (rare early story-save path), preserve the
+                // exact current identity rather than dropping the save.
+                if (!committed)
                 {
-                    if (album == null)
-                        continue;
-
-                    file.Albums.Add(
-                        ToSaveEntry(album)
-                    );
+                    string path = GetPathForSaveId(saveId);
+                    if (file.Albums.Count == 0 && ExistingFileHasAlbums(path))
+                    {
+                        Debug.LogError("[AlbumSave] EMPTY SAVE BLOCKED. Existing album data was preserved: " + path);
+                        return;
+                    }
+                    WriteAllTextAtomic(path, json);
+                    committed = true;
                 }
 
-                string json =
-                    JsonUtility.ToJson(
-                        file,
-                        true
-                    );
-
-                WriteAllTextAtomic(path, json);
-                dirty = false;
-
-                Debug.Log(
-                    "[AlbumSave] Saved " +
-                    file.Albums.Count +
-                    " unique album(s)."
-                );
-
-                Debug.Log(
-                    "[AlbumSave] File: " +
-                    path
-                );
+                if (committed)
+                {
+                    dirty = false;
+                    Debug.Log("[AlbumSave] Saved " + file.Albums.Count + " album(s), chart state, and production state for " + saveId + ".");
+                }
             }
             catch (Exception ex)
             {
-                Debug.LogError(
-                    "[AlbumSave] Save failed:\n" +
-                    ex
-                );
+                Debug.LogError("[AlbumSave] Save failed:\n" + ex);
             }
+        }
+
+        private static AlbumSaveFile BuildSaveFile()
+        {
+            AlbumSaveFile file = new AlbumSaveFile();
+            file.Version = 3;
+            file.WrittenUtcTicks = DateTime.UtcNow.Ticks;
+            file.LastChartProcessedTicks = lastChartProcessedTicks;
+            file.ProductionProject = AlbumProductionManager.GetProjectForSave();
+            file.LegacyProductionMigrationCompleted = legacyProductionMigrationCompleted;
+            foreach (AlbumData album in Albums.AlbumList)
+            {
+                if (album != null)
+                    file.Albums.Add(ToSaveEntry(album));
+            }
+            return file;
         }
 
         public static void Load()
@@ -426,153 +543,167 @@ namespace Albummodelite
             );
         }
 
-        private static bool LoadForSaveId(
-            string saveId
-        )
+        private static bool LoadForSaveId(string saveId)
         {
-            if (!initialized ||
-                string.IsNullOrEmpty(saveId))
-            {
+            if (!initialized || string.IsNullOrEmpty(saveId))
                 return false;
-            }
 
             try
             {
-                string path =
-                    GetPathForSaveId(saveId);
+                string json = string.Empty;
+                string source = string.Empty;
+                string imdcJson = string.Empty;
+                string fallbackJson = string.Empty;
+                string fallbackSource = string.Empty;
 
-                TryMigrateLegacySidecar(saveId, path);
+                if (IMDataCoreIntegration.IsReady)
+                    IMDataCoreIntegration.TryGetState(out imdcJson);
 
-                if (!File.Exists(path))
+                string fallbackId = GetFallbackSaveId();
+                string path = GetPathForSaveId(!string.IsNullOrEmpty(fallbackId) ? fallbackId : saveId);
+                TryMigrateLegacySidecars(path);
+                if (File.Exists(path))
+                {
+                    fallbackJson = File.ReadAllText(path);
+                    fallbackSource = path;
+                }
+                else
+                {
+                    // Last migration chance from the v4 campaign-level sidecar. This is cloned
+                    // into each physical slot on first use, after which the slots diverge safely.
+                    string campaignPath = GetPathForSaveId(GetLegacyCampaignSaveId());
+                    if (File.Exists(campaignPath))
+                    {
+                        fallbackJson = File.ReadAllText(campaignPath);
+                        fallbackSource = campaignPath + " (legacy campaign migration)";
+                    }
+                }
+
+                if (!string.IsNullOrEmpty(imdcJson) && !string.IsNullOrEmpty(fallbackJson))
+                {
+                    long imdcWritten = GetWrittenUtcTicks(imdcJson);
+                    long fallbackWritten = GetWrittenUtcTicks(fallbackJson);
+                    if (fallbackWritten > imdcWritten)
+                    {
+                        json = fallbackJson;
+                        source = fallbackSource + " (newer than IM Data Core copy)";
+                    }
+                    else
+                    {
+                        json = imdcJson;
+                        source = "IM Data Core";
+                    }
+                }
+                else if (!string.IsNullOrEmpty(imdcJson))
+                {
+                    json = imdcJson;
+                    source = "IM Data Core";
+                }
+                else if (!string.IsNullOrEmpty(fallbackJson))
+                {
+                    json = fallbackJson;
+                    source = fallbackSource;
+                }
+
+                if (string.IsNullOrEmpty(json))
                 {
                     Albums.AlbumList.Clear();
-                    CompleteLoadContext(saveId, 0L);
+                    CompleteLoadContext(saveId, 0L, null, false);
                     RivalAlbumManager.RebuildIdAllocator();
-
-                    Debug.Log(
-                        "[AlbumSave] No album save found for " +
-                        saveId +
-                        ". Starting with 0 albums."
-                    );
-
-                    Debug.Log(
-                        "[AlbumSave] Expected file: " +
-                        path
-                    );
-
+                    Debug.Log("[AlbumSave] No album state found for " + saveId + ". Starting with 0 albums.");
                     return true;
                 }
 
-                string json =
-                    File.ReadAllText(path);
-
-                AlbumSaveFile file =
-                    JsonUtility.FromJson<AlbumSaveFile>(
-                        json
-                    );
-
-                if (file == null ||
-                    file.Albums == null)
+                AlbumSaveFile file = JsonUtility.FromJson<AlbumSaveFile>(json);
+                if (file == null || file.Albums == null)
                 {
-                    Debug.LogWarning(
-                        "[AlbumSave] Save file was empty or invalid."
-                    );
-
-                    Albums.AlbumList.Clear();
-                    CompleteLoadContext(saveId, 0L);
-                    RivalAlbumManager.RebuildIdAllocator();
-                    return true;
+                    Debug.LogWarning("[AlbumSave] Save document was empty or invalid; existing runtime state was not overwritten.");
+                    return false;
                 }
 
-                List<AlbumData> restoredAlbums =
-                    new List<AlbumData>();
-
-                HashSet<string> seen =
-                    new HashSet<string>();
-
+                loadingFileVersion = file.Version <= 0 ? 1 : file.Version;
+                bool needsBackgroundKeyMigration =
+                    file.Albums.Any(entry => entry != null && string.IsNullOrEmpty(entry.BackgroundKey)) ||
+                    (file.ProductionProject != null && string.IsNullOrEmpty(file.ProductionProject.BackgroundKey));
+                List<AlbumData> restoredAlbums = new List<AlbumData>();
+                HashSet<string> seen = new HashSet<string>();
                 int duplicatesSkipped = 0;
 
                 foreach (AlbumSaveEntry entry in file.Albums)
                 {
                     if (entry == null)
                         continue;
-
-                    string key =
-                        GetSaveEntryIdentityKey(entry);
-
+                    string key = GetSaveEntryIdentityKey(entry);
                     if (!seen.Add(key))
                     {
                         duplicatesSkipped++;
                         continue;
                     }
-
-                    AlbumData album =
-                        FromSaveEntry(entry);
-
+                    AlbumData album = FromSaveEntry(entry);
                     if (album != null)
-                    {
-                        restoredAlbums.Add(
-                            album
-                        );
-                    }
+                        restoredAlbums.Add(album);
                 }
 
                 Albums.AlbumList.Clear();
-                Albums.AlbumList.AddRange(
-                    restoredAlbums
-                );
-
+                Albums.AlbumList.AddRange(restoredAlbums);
                 Albums.DeduplicateInPlace();
-
                 CompleteLoadContext(
                     saveId,
-                    file.LastChartProcessedTicks
-                );
+                    file.LastChartProcessedTicks,
+                    file.ProductionProject,
+                    file.LegacyProductionMigrationCompleted);
                 RivalAlbumManager.RebuildIdAllocator();
 
-                Debug.Log(
-                    "[AlbumSave] Loaded " +
-                    Albums.AlbumList.Count +
-                    " unique album(s) from " +
-                    saveId +
-                    "."
-                );
-
-                if (duplicatesSkipped > 0)
+                // Keep the two persistence backends mirrored to the checkpoint that was
+                // actually selected, but copy the committed source document verbatim. Do not
+                // serialize the just-restored runtime here: schema/legacy-production migrations
+                // are intentionally dirty until the player's next real Idol Manager save.
+                if (IMDataCoreIntegration.IsReady && source != "IM Data Core")
                 {
-                    Debug.LogWarning(
-                        "[AlbumSave] Skipped " +
-                        duplicatesSkipped +
-                        " duplicate saved album entr" +
-                        (duplicatesSkipped == 1
-                            ? "y."
-                            : "ies.")
-                    );
-
-                    MarkDirty();
+                    IMDataCoreIntegration.TrySetState(json);
+                }
+                else if (source == "IM Data Core" && !string.IsNullOrEmpty(fallbackId))
+                {
+                    WriteAllTextAtomic(path, json);
                 }
 
-                Debug.Log(
-                    "[AlbumSave] File: " +
-                    path
-                );
+                if (loadingFileVersion < 3)
+                    MarkDirty();
+                if (needsBackgroundKeyMigration)
+                    MarkDirty();
+                if (duplicatesSkipped > 0)
+                    MarkDirty();
 
+                Debug.Log("[AlbumSave] Loaded " + Albums.AlbumList.Count + " unique album(s) from " + source + ".");
                 return true;
             }
             catch (Exception ex)
             {
-                Debug.LogError(
-                    "[AlbumSave] Load failed:\n" +
-                    ex
-                );
-
+                Debug.LogError("[AlbumSave] Load failed:\n" + ex);
                 return false;
+            }
+        }
+
+        private static long GetWrittenUtcTicks(string json)
+        {
+            if (string.IsNullOrEmpty(json))
+                return long.MinValue;
+            try
+            {
+                AlbumSaveFile file = JsonUtility.FromJson<AlbumSaveFile>(json);
+                return file != null ? file.WrittenUtcTicks : long.MinValue;
+            }
+            catch
+            {
+                return long.MinValue;
             }
         }
 
         private static void CompleteLoadContext(
             string saveId,
-            long chartProcessedTicks)
+            long chartProcessedTicks,
+            AlbumProductionProject productionProject,
+            bool productionMigrationCompleted)
         {
             loadedSaveId = saveId;
             lastChartProcessedTicks = chartProcessedTicks > 0L
@@ -580,6 +711,41 @@ namespace Albummodelite
                 : 0L;
             dirty = false;
             loadGeneration++;
+
+            AlbumProductionProject restoredProject = productionProject;
+            legacyProductionMigrationCompleted =
+                productionMigrationCompleted || restoredProject != null;
+
+            if (restoredProject == null && !legacyProductionMigrationCompleted)
+            {
+                string legacyProductionId = GetLegacyProductionSaveId();
+                bool migratedLegacyProduction =
+                    AlbumProductionManager.TryLoadLegacyProject(legacyProductionId, out restoredProject);
+
+                // Some later standalone builds may have been paired with the exact-folder
+                // v4 save identity instead. Accept that form too without conflating it with
+                // the older suffix-stripped production filename.
+                string exactCampaignId = GetLegacyCampaignSaveId();
+                if (!migratedLegacyProduction &&
+                    !string.Equals(legacyProductionId, exactCampaignId, StringComparison.Ordinal))
+                {
+                    migratedLegacyProduction =
+                        AlbumProductionManager.TryLoadLegacyProject(exactCampaignId, out restoredProject);
+                }
+
+                if (migratedLegacyProduction)
+                {
+                    // Persist the marker together with the migrated project. We intentionally do
+                    // not delete/rename the legacy file here: if the player quits without saving,
+                    // the migration should roll back just like the rest of the checkpoint.
+                    legacyProductionMigrationCompleted = true;
+                    dirty = true;
+                }
+            }
+            if (restoredProject != null && string.IsNullOrEmpty(restoredProject.BackgroundKey))
+                restoredProject.BackgroundKey = AlbumBackgroundCatalog.GetLegacyKey(restoredProject.BackgroundIndex);
+
+            AlbumProductionManager.RestoreFromSave(restoredProject, saveId);
         }
 
         private static string GetPathForSaveId(
@@ -742,11 +908,18 @@ namespace Albummodelite
             entry.BackgroundIndex =
                 album.BackgroundIndex;
 
+            entry.BackgroundKey =
+                album.BackgroundKey ?? "";
+
             entry.LayoutIndex =
                 album.LayoutIndex;
 
             entry.FontIndex =
                 album.FontIndex;
+
+            entry.FontKey = album.FontKey ?? "";
+            entry.ReleaseKind = album.ReleaseKind;
+            entry.DebutFanRewardGranted = album.DebutFanRewardGranted;
 
             entry.TextColorIndex =
                 album.TextColorIndex;
@@ -877,11 +1050,36 @@ namespace Albummodelite
             album.BackgroundIndex =
                 entry.BackgroundIndex;
 
+            album.BackgroundKey = string.IsNullOrEmpty(entry.BackgroundKey)
+                ? AlbumBackgroundCatalog.GetLegacyKey(entry.BackgroundIndex)
+                : entry.BackgroundKey;
+
             album.LayoutIndex =
                 entry.LayoutIndex;
 
             album.FontIndex =
                 entry.FontIndex;
+
+            album.FontKey = string.IsNullOrEmpty(entry.FontKey)
+                ? AlbumFontCatalog.GetKey(entry.FontIndex)
+                : entry.FontKey;
+            if (loadingFileVersion < 3)
+            {
+                int restoredSongCount = album.Songs != null ? album.Songs.Count : 0;
+                album.ReleaseKind = restoredSongCount > 10
+                    ? (int)AlbumReleaseKind.LP
+                    : (restoredSongCount > 6 ? (int)AlbumReleaseKind.EP : (int)AlbumReleaseKind.MiniAlbum);
+            }
+            else
+            {
+                album.ReleaseKind = entry.ReleaseKind;
+            }
+
+            // v1/v2 releases predate the restored debut-reward marker. Treat historical
+            // albums as already consumed so upgrading never grants retroactive fan windfalls.
+            album.DebutFanRewardGranted = loadingFileVersion < 3
+                ? true
+                : entry.DebutFanRewardGranted;
 
             album.TextColorIndex =
                 entry.TextColorIndex;
@@ -1046,53 +1244,125 @@ namespace Albummodelite
 
         private static string GetSaveId()
         {
+            // Keep Create An Album's in-memory identity tied to the concrete vanilla save
+            // target, not to which optional persistence backend happens to be ready this frame.
+            // IM Data Core can bootstrap slightly after mainScript.Start; using its active key
+            // here would make the identity change mid-session and could reload over dirty state.
+            string fallback = GetFallbackSaveId();
+            return !string.IsNullOrEmpty(fallback)
+                ? fallback
+                : GetLegacyCampaignSaveId();
+        }
+
+        private static string GetFallbackSaveId()
+        {
+            string id = AlbumSaveIdentity.GetFallbackIdentity();
+            if (!string.IsNullOrEmpty(id))
+                return id;
+
+            string storyAlias = AlbumSaveIdentity.GetLogicalNewStoryAlias();
+            return storyAlias ?? string.Empty;
+        }
+
+        private static string GetLegacyCampaignSaveId()
+        {
             try
             {
-                string folder = "";
-
+                string folder = string.Empty;
                 if (staticVars.PlayerData != null)
                 {
-                    try
-                    {
-                        folder =
-                            staticVars.PlayerData
-                                .GetSaveFolderName();
-                    }
-                    catch
-                    {
-                    }
+                    try { folder = staticVars.PlayerData.GetSaveFolderName(); }
+                    catch { }
+                }
+                if (string.IsNullOrEmpty(folder))
+                    return staticVars.IsStoryMode() ? "story_default" : "freeplay_default";
+
+                string prefix = staticVars.IsStoryMode() ? "story_" : "freeplay_";
+                return SanitizeFileName(prefix + folder);
+            }
+            catch
+            {
+                return staticVars.IsStoryMode() ? "story_default" : "freeplay_default";
+            }
+        }
+
+        private static string GetLegacyProductionSaveId()
+        {
+            try
+            {
+                string folder = string.Empty;
+                if (staticVars.PlayerData != null)
+                {
+                    try { folder = staticVars.PlayerData.GetSaveFolderName(); }
+                    catch { }
                 }
 
                 if (string.IsNullOrEmpty(folder))
+                    return staticVars.IsStoryMode() ? "story_default" : "freeplay_default";
+
+                // The production addon in the supplied legacy archive reflected the old
+                // AlbumPersistence.GetSaveId(), which stripped an 8-character hexadecimal
+                // suffix from the campaign folder before building its project filename.
+                int underscore = folder.LastIndexOf('_');
+                if (underscore > 0 && underscore < folder.Length - 1)
                 {
-                    return staticVars.IsStoryMode()
-                        ? "story_default"
-                        : "freeplay_default";
+                    string suffix = folder.Substring(underscore + 1);
+                    if (suffix.Length == 8 && IsHexString(suffix))
+                        folder = folder.Substring(0, underscore);
                 }
 
-                // Preserve Idol Manager's complete save-folder identity, including its
-                // unique suffix, so same-named campaigns cannot share one Album sidecar.
-
-                string prefix =
-                    staticVars.IsStoryMode()
-                        ? "story_"
-                        : "freeplay_";
-
-                return SanitizeFileName(
-                    prefix + folder
-                );
+                string prefix = staticVars.IsStoryMode() ? "story_" : "freeplay_";
+                return SanitizeFileName(prefix + folder);
             }
-            catch (Exception ex)
+            catch
             {
-                Debug.LogWarning(
-                    "[AlbumSave] Could not determine save ID: " +
-                    ex.Message
-                );
-
-                return staticVars.IsStoryMode()
-                    ? "story_default"
-                    : "freeplay_default";
+                return staticVars.IsStoryMode() ? "story_default" : "freeplay_default";
             }
+        }
+
+        private static void TryMigrateLegacySidecars(string exactPath)
+        {
+            if (File.Exists(exactPath))
+                return;
+
+            string campaignPath = GetPathForSaveId(GetLegacyCampaignSaveId());
+            if (File.Exists(campaignPath) && !string.Equals(campaignPath, exactPath, StringComparison.OrdinalIgnoreCase))
+            {
+                try
+                {
+                    File.Copy(campaignPath, exactPath, false);
+                    Debug.Log("[AlbumSave] Migrated v4 campaign sidecar into the concrete save slot.");
+                    return;
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogWarning("[AlbumSave] Campaign sidecar migration failed: " + ex.Message);
+                }
+            }
+
+            // Pre-v4 builds stripped Idol Manager's trailing eight-character campaign suffix.
+            // Physical v4.1 save IDs are hashes, so that old filename cannot be inferred from
+            // exactPath itself; compute the legacy campaign ID explicitly instead.
+            string suffixStrippedPath = GetPathForSaveId(GetLegacyProductionSaveId());
+            if (File.Exists(suffixStrippedPath) &&
+                !string.Equals(suffixStrippedPath, exactPath, StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(suffixStrippedPath, campaignPath, StringComparison.OrdinalIgnoreCase))
+            {
+                try
+                {
+                    File.Copy(suffixStrippedPath, exactPath, false);
+                    Debug.Log("[AlbumSave] Migrated suffix-stripped legacy album sidecar into the concrete save slot.");
+                    return;
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogWarning("[AlbumSave] Suffix-stripped sidecar migration failed: " + ex.Message);
+                }
+            }
+
+            string exactId = Path.GetFileNameWithoutExtension(exactPath);
+            if (exactId != null && exactId.StartsWith("albums_", StringComparison.Ordinal))
+                TryMigrateLegacySidecar(exactId.Substring(7), exactPath);
         }
 
         private static void WriteAllTextAtomic(string path, string contents)

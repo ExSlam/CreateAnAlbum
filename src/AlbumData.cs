@@ -34,8 +34,14 @@ public class AlbumData
     public string CoverPath = "";
     public string Theme = "";
 
+    // 4.1.1: stable release/font/background metadata. ReleaseKind uses CreateAnAlbumGroupRules.AlbumReleaseKind values.
+    public int ReleaseKind;
+    public string FontKey = "";
+    public bool DebutFanRewardGranted;
+
     public int ThemeIndex;
     public int BackgroundIndex;
+    public string BackgroundKey = "";
     public int LayoutIndex;
     public int FontIndex;
     public int TextColorIndex;
