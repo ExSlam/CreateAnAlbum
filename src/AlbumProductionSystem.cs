@@ -492,7 +492,11 @@ namespace CreateAnAlbumGroupRules
             CreateText(panel.transform, "Expected", "Expected release: " + expected.ToString("MMM d, yyyy"),
                 11, FontStyle.Bold, new Color(0.45f, 0.46f, 0.68f), new Vector2(32f, -458f), new Vector2(360f, 25f), TextAnchor.MiddleLeft);
 
-            GameObject close = AlbumUiResources.InstantiateButton(panel.transform, "Close", "Close", true,
+            GameObject close = AlbumUiResources.InstantiateButton(
+                panel.transform,
+                "Close",
+                "Close",
+                AlbumButtonStyle.Destructive,
                 delegate { AlbumPopupHost.Close(AlbumPopupKind.Production); });
             if (close != null)
             {

@@ -466,6 +466,24 @@ namespace Albummodelite
             }
             manager.popups = nonNull.ToArray();
 
+            // Vanilla PopupManager.Close() assumes every entry marked open has a live object
+            // with a Popup component and dereferences both without checking. Other mods / scene
+            // transitions can leave stale registrations behind, so normalize only entries that
+            // cannot possibly represent a functioning open popup before invoking vanilla Close.
+            for (int i = 0; i < manager.popups.Length; i++)
+            {
+                PopupManager._popup entry = manager.popups[i];
+                if (entry == null || !entry.open)
+                    continue;
+
+                if (entry.obj == null || entry.obj.GetComponent<Popup>() == null)
+                {
+                    if (PopupManager.PopupCounter > 0)
+                        PopupManager.PopupCounter--;
+                    entry.open = false;
+                }
+            }
+
             bool canCloseThroughManager = false;
             if (manager.queue.Count > 0 && IsOwnedType(manager.queue[0]))
             {

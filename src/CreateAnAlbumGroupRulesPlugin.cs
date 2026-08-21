@@ -133,36 +133,36 @@ namespace CreateAnAlbumGroupRules
             MoveChild(
                 root,
                 "AlbumTitleLabel",
-                new Vector2(120, -126)
+                new Vector2(120, -148)
             );
 
             MoveChild(
                 root,
                 "AlbumTitleInput",
-                new Vector2(120, -150)
+                new Vector2(120, -174)
             );
 
             MoveChild(
                 root,
                 "SongsHeading",
-                new Vector2(120, -205)
+                new Vector2(120, -232)
             );
 
             MoveChild(
                 root,
                 "SongsCount",
-                new Vector2(430, -205)
+                new Vector2(430, -232)
             );
 
             MoveChild(
                 root,
-                "SongSelectorViewport",
-                new Vector2(120, -238)
+                "SongSelectorScrollRoot",
+                new Vector2(120, -264)
             );
 
             Transform selector =
                 root.Find(
-                    "SongSelectorViewport"
+                    "SongSelectorScrollRoot"
                 );
 
             if (selector != null)
@@ -181,7 +181,7 @@ namespace CreateAnAlbumGroupRules
             MoveChild(
                 root,
                 "InfoTip",
-                new Vector2(120, -414)
+                new Vector2(120, -442)
             );
         }
 
@@ -647,6 +647,10 @@ namespace CreateAnAlbumGroupRules
             Groups._group group = GetSelectedGroup(popup);
             List<Groups._group> groups = GetPlayerGroups();
 
+            // The release-type selector occupies the band above the title input. Keep every
+            // field below it in a separate vertical lane and give the info page enough scroll
+            // height for the lower song selector/tip after that shift.
+            popup.EnsureContentHeight(510f);
             RepositionInfoFields(content);
             DrawReleaseTypeSelector(
                 popup,

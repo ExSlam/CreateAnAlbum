@@ -11,7 +11,7 @@ Create An Album (`com.jordanss.createanalbum`) is a Harmony mod for Idol Manager
 - [Cosmo's Mod Buttons](https://github.com/ExSlam/IM-Cosmo-Mod-Library/tree/main/mods/Mod%20Buttons) supplies Action Hub buttons that open Create An Album's `PopupManager`-owned UIs.
 - `mainScript.Start` attaches the small Album runtime host only in gameplay.
 - Create, Discography, Album Detail, Album Chart, Album Production, and automatic chart-performance UI roots are registered with Idol Manager's vanilla `PopupManager` so the game owns queueing, pause/resume, background blur/darken, input blocking, and popup transitions.
-- Album UI controls use shipped MUIP/game resources plus the vanilla Settings action buttons and producer-list slider templates. Confirm/destructive commands retain the game's green/red sliced sprites and white labels; light input fields use dark text.
+- Album UI controls use shipped MUIP/game resources plus the vanilla Settings action buttons and producer-list slider templates. Confirm/destructive commands retain the game's green/red sliced sprites and white labels; light input fields use dark text. Every Create An Album **Close** control is destructive-style red with white text.
 - Popup panels use compact centered dimensions, fixed headers and footers, masked scrolling bodies or lists, and the game-selected legacy/TMP font where available.
 - The small `AlbumUiResources` helper is embedded in this assembly. There is no dependency on the standalone IM UI Framework mod.
 
@@ -36,7 +36,9 @@ Create An Album ships Allura, Cinzel, Cormorant Garamond, and Cyberthrone and no
 
 Version 4.1.1 makes album backgrounds directory-driven. The shared background catalog scans `AlbumBackgrounds` recursively for `.png`, `.jpg`, and `.jpeg` files, so users can add images and future releases can ship more backgrounds without code changes. The Cover Designer exposes every discovered image through a padded horizontal thumbnail scroller, and persisted albums use stable relative-path background keys so adding files later does not remap existing covers. Legacy numeric background indexes remain migration-compatible.
 
-On Windows, packaged and custom `.ttf` files are registered privately for the game process rather than installed system-wide. The mod creates a sibling `CustomFonts` directory in the live mod folder; place additional `.ttf` files there before starting gameplay to make them available in the Cover Designer. Persisted covers use stable font keys rather than depending only on a list index, while old `FontIndex` values remain migration-compatible.
+Version 4.1.2 hardens packaged/custom TTF loading for Unity 2019 on Windows. The catalog reads several embedded TTF naming identities (preferred family, family, full name, and PostScript name), temporarily registers the packaged file with Windows before Unity performs its first lookup, notifies the OS font table, and verifies the requested family against Unity's own installed-font enumeration before accepting it. Registrations are removed when Create An Album shuts down. The log reports the exact family Unity accepted or an explicit registration/verification fallback warning instead of failing silently.
+
+The mod creates a sibling `CustomFonts` directory in the live mod folder; place additional `.ttf` files there before starting gameplay to make them available in the Cover Designer. Persisted covers use stable font keys rather than depending only on a list index, while old `FontIndex` values remain migration-compatible.
 
 ## Album chart and Rivals Reborn
 
@@ -55,13 +57,15 @@ Version 4.1.0 uses a unified **schema v3** save document for albums, the 14-day 
 
 [Cosmo's IM Data Core](https://github.com/ExSlam/IM-Cosmo-Mod-Library/tree/main/mods/IM%20Data%20Core) is an optional, preferred persistence backend when its `com.cosmo.imdatacore` Harmony owner is active. Create An Album integrates with it by reflection, so there is no compile-time IM Data Core dependency. The standalone fallback remains available when IM Data Core is absent.
 
-The fallback identity tracks Idol Manager's concrete vanilla save/checkpoint path rather than only the campaign folder name. Create An Album patches the known concrete save callers and deliberately does **not** patch generic `DataSaver<T>`. Story `Do_New_Save` receives an additional caller-level path capture immediately before its final `SavedData` write because Idol Manager generates that random physical save directory after `SaveEvent` has already fired.
+The fallback identity tracks Idol Manager's concrete vanilla save/checkpoint path rather than only the campaign folder name. Create An Album deliberately does **not** patch generic `DataSaver<T>`. Instead, it targets the five known vanilla callers that write `SaveManager.SavedData`: `SaveManager.SaveData(bool, bool)`, `SaveManager.SaveChapter(tasks._chapter)`, `Popup_Save.Save()`, `Popup_Load_Story.Do_Overwrite_Save(save_info)`, and `Popup_Load_Story.Do_New_Save(string)`.
 
-This ordering is designed to compose with Cosmo's Save Write Ordering Fix: IM Data Core can prepare its checkpoint first, Create An Album captures the final generated path without replacing the vanilla writer, and Save Write Ordering Fix can run last and replace only that writer.
+Version 4.1.2 separates **loaded identity** from **save destination**. `SaveEvent` stages one schema-v3 snapshot but does not rebind the live session when an autosave or Save As points somewhere else. Immediately before the concrete vanilla `SavedData` call, Create An Album commits that staged document to the exact physical target. Its transpiler runs **before IM Data Core**, so IMDC sees the new CAA custom-data mutation before it forks/persists that same checkpoint; Save Write Ordering Fix remains free to run afterward and replace only the final vanilla writer. Only loading a save changes Create An Album's live loaded identity.
 
-Standalone mirrors use atomic temporary-file replacement and include a write timestamp. When both IM Data Core and a standalone mirror are available, the newer valid copy wins and can reseed the other backend. Legacy v4 campaign-level sidecars and old standalone `album_production_*.json` projects are migrated forward when possible.
+Supplemental saves are skipped while album state is still restoring, so a transient early autosave cannot authoritatively replace a not-yet-loaded album list with an empty document. Fallback state selected during a load is likewise not written back into IM Data Core from inside the load boundary; it waits for the next genuine save checkpoint.
 
-Album mutations remain dirty in memory until Idol Manager performs a save. Quitting gameplay without an Idol Manager save therefore does not intentionally commit new album or production-only state.
+Standalone mirrors use atomic temporary-file replacement and include a write timestamp. When both IM Data Core and a standalone mirror are available, the newer valid copy wins. Legacy v4 campaign-level sidecars and old standalone `album_production_*.json` projects are migrated forward when possible.
+
+Album mutations remain in memory until Idol Manager performs a save. Quitting gameplay without an Idol Manager save therefore does not intentionally commit new album or production-only state.
 
 ## Building
 

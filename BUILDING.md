@@ -40,6 +40,6 @@ That produces or updates:
 
 `%USERPROFILE%\AppData\LocalLow\Glitch Pitch\Idol Manager\Mods\CreateAnAlbum`
 
-For manual installation, copy `com.jordanss.createanalbum.dll` and the **contents** of `assets` into that directory. Do not put an `assets` wrapper inside the installed mod. The four packaged `.ttf` files must remain in `AlbumFonts`. A `CustomFonts` sibling directory is created at runtime for user-supplied `.ttf` files and is not part of the source asset tree. `AlbumBackgrounds` is scanned recursively at runtime for `.png`, `.jpg`, and `.jpeg` images, so additional background files or subfolders can be added without rebuilding the mod.
+For manual installation, copy `com.jordanss.createanalbum.dll` and the **contents** of `assets` into that directory. Do not put an `assets` wrapper inside the installed mod. The four packaged `.ttf` files must remain in `AlbumFonts`. A `CustomFonts` sibling directory is created at runtime for user-supplied `.ttf` files and is not part of the source asset tree. On Windows, 4.1.2 resolves the TTF name table, temporarily registers those font resources at runtime, and verifies them against Unity's installed-font enumeration; test logs should contain `[AlbumFonts] Loaded ... as Unity family ...` entries for successful packaged-font resolution. `AlbumBackgrounds` is scanned recursively at runtime for `.png`, `.jpg`, and `.jpeg` images, so additional background files or subfolders can be added without rebuilding the mod.
 
 The complete expected deployment tree is documented in [AGENTS.md](AGENTS.md).

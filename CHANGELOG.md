@@ -1,5 +1,19 @@
 # Create An Album changelog
 
+## 4.1.2
+
+- Fixed the Album Information layout so the Album Name input, song heading/count, song selector, and help text are shifted below the restored Release Type controls instead of overlapping them.
+- Reworked packaged/custom TTF loading for Unity 2019 on Windows. The shared font catalog now reads preferred/family/full/PostScript names from each TTF, temporarily registers packaged files before Unity performs its first lookup, notifies Windows when font resources change, and verifies each accepted family against Unity's own installed-font enumeration so a silent fallback `Font` object is not mistaken for the shipped face. Successful and failed registration/resolution attempts are logged explicitly.
+- Standardized every Create An Album **Close** control on `AlbumButtonStyle.Destructive`, which uses the vanilla red action style with white text. This includes the Album Production dashboard.
+- Removed the redundant Album Detail scroll-rebuild Harmony patch. Collaboration subtitles now render inside the native `TrackListScrollRoot`, so Discography/Album Detail owns exactly one track scrollbar.
+- Reworked supplemental save timing around the exact vanilla `SavedData` write. `SaveEvent` now stages the CAA schema-v3 document without rebinding the loaded slot; a caller-level transpiler on all five known vanilla save routes commits that staged document to the concrete physical target **before** IM Data Core prepares/forks its checkpoint and before Save Write Ordering Fix handles the final writer.
+- Saving to autosave, Save As, Story save, or another manual target no longer changes Create An Album's in-memory **loaded** identity. Only a real load rebinds the live album/production state, preventing autosave/manual writes from making later loads select the wrong CAA branch.
+- Supplemental writes are skipped while CAA is still restoring a load, preventing an early vanilla autosave from turning a transient empty runtime into an authoritative empty album checkpoint.
+- Fallback state selected during a vanilla load is no longer pushed into IM Data Core from inside the load boundary; it is marked dirty and committed through the next real concrete save checkpoint instead.
+- Hardened Create An Album popup cleanup against stale `PopupManager` registrations whose object or `Popup` component is missing, preventing the startup/reset `NullReferenceException` observed when vanilla `PopupManager.Close()` encountered such an entry.
+- Initialized the legacy production DTO's deserialization-only `Project` field explicitly, removing the benign CS0649 build warning without converting the field to a JsonUtility-incompatible property.
+- Bumped project and mod metadata version to 4.1.2.
+
 ## 4.1.1
 
 - Replaced the duplicated fixed PNG loaders with one shared runtime background catalog used by the Cover Designer and final cover renderer.

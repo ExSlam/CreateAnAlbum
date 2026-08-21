@@ -2,6 +2,7 @@ using System;
 using UnityEngine;
 using UnityEngine.UI;
 using CreateAnAlbumGroupRules;
+using CreateAnAlbumChartTrackEnhancements;
 
 namespace Albummodelite
 {
@@ -128,29 +129,54 @@ namespace Albummodelite
             content.anchorMin = new Vector2(0f, 1f);
             content.anchorMax = new Vector2(1f, 1f);
             content.pivot = new Vector2(0.5f, 1f);
+
             int trackCount = album.Songs != null ? album.Songs.Count : 0;
-            content.sizeDelta = new Vector2(-18f, Mathf.Max(125f, trackCount * 22f + 4f));
+            const float rowHeight = 42f;
+            content.sizeDelta = new Vector2(
+                -18f,
+                Mathf.Max(125f, trackCount * rowHeight + 4f));
             content.anchoredPosition = Vector2.zero;
 
             scroll.viewport = viewport;
             scroll.content = content;
             AlbumUiResources.AttachVanillaListScrollIndicator(
-                scrollRoot.transform, scroll, "TrackListScrollIndicator");
+                scrollRoot.transform,
+                scroll,
+                "TrackListScrollIndicator");
+            scroll.verticalNormalizedPosition = 1f;
 
-            if (album.Songs != null)
+            if (album.Songs == null)
+                return;
+
+            for (int i = 0; i < album.Songs.Count; i++)
             {
-                for (int i = 0; i < album.Songs.Count; i++)
+                singles._single song = album.Songs[i];
+                float y = -i * rowHeight;
+
+                CreateText(
+                    contentObject.transform,
+                    "Track_" + i,
+                    (i + 1) + ". " + (song != null ? song.title : "Unknown"),
+                    10,
+                    FontStyle.Normal,
+                    new Color(0.28f, 0.27f, 0.34f),
+                    new Vector2(4f, y),
+                    new Vector2(280f, 21f),
+                    TextAnchor.MiddleLeft
+                );
+
+                string feature = AlbumCollaborationLookup.GetFeatureText(song);
+                if (!string.IsNullOrEmpty(feature))
                 {
-                    singles._single song = album.Songs[i];
                     CreateText(
                         contentObject.transform,
-                        "Track_" + i,
-                        (i + 1) + ". " + (song != null ? song.title : "Unknown"),
-                        10,
-                        FontStyle.Normal,
-                        new Color(0.28f, 0.27f, 0.34f),
-                        new Vector2(4f, -i * 22f),
-                        new Vector2(280f, 20f),
+                        "TrackFeature_" + i,
+                        feature,
+                        8,
+                        FontStyle.Bold,
+                        new Color(0.42f, 0.38f, 0.72f),
+                        new Vector2(20f, y - 20f),
+                        new Vector2(264f, 18f),
                         TextAnchor.MiddleLeft
                     );
                 }

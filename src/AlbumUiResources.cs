@@ -163,6 +163,15 @@ namespace Albummodelite
             AlbumButtonStyle style,
             UnityAction click)
         {
+            // Repository-wide UI invariant: a control explicitly named/labeled Close is always
+            // destructive-style red with white text, even if a future caller accidentally asks
+            // for a neutral/outline style.
+            if (string.Equals(name, "Close", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(label, "Close", StringComparison.OrdinalIgnoreCase))
+            {
+                style = AlbumButtonStyle.Destructive;
+            }
+
             bool usesVanillaSemanticSprite;
             GameObject buttonObject = InstantiateVanillaSemanticButton(
                 parent,

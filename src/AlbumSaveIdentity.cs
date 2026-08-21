@@ -9,44 +9,58 @@ using UnityEngine;
 namespace Albummodelite
 {
     /// <summary>
-    /// Captures the concrete vanilla save/load target at the caller level. This intentionally
-    /// does not patch generic DataSaver<T>, so it composes with IM Data Core and Save Write
-    /// Ordering Fix on Idol Manager's Mono runtime.
+    /// Tracks the concrete vanilla save that was loaded. Save targets are deliberately kept
+    /// separate from the loaded identity: autosaves and Save As create checkpoints, but must
+    /// never make the live session pretend that it loaded from the just-written destination.
     /// </summary>
     internal static class AlbumSaveIdentity
     {
-        private static string activeTarget = string.Empty;
+        private static string activeLoadTarget = string.Empty;
         private static string pendingSaveTarget = string.Empty;
 
         internal static void Reset()
         {
-            activeTarget = string.Empty;
+            activeLoadTarget = string.Empty;
             pendingSaveTarget = string.Empty;
         }
 
         internal static void CaptureLoadTarget(string path)
         {
             string normalized = Normalize(path);
-            if (!string.IsNullOrEmpty(normalized))
-                activeTarget = normalized;
+            if (string.IsNullOrEmpty(normalized))
+                return;
+
+            activeLoadTarget = normalized;
+            pendingSaveTarget = string.Empty;
         }
 
         internal static void CaptureSaveTarget(string path)
         {
             string normalized = Normalize(path);
             if (!string.IsNullOrEmpty(normalized))
-            {
                 pendingSaveTarget = normalized;
-                activeTarget = normalized;
-            }
         }
 
-        internal static string GetFallbackIdentity()
+        internal static string GetActiveFallbackIdentity()
         {
-            string target = !string.IsNullOrEmpty(pendingSaveTarget) ? pendingSaveTarget : activeTarget;
-            if (!string.IsNullOrEmpty(target))
-                return "path_" + StableHash(target);
-            return string.Empty;
+            return string.IsNullOrEmpty(activeLoadTarget)
+                ? string.Empty
+                : "path_" + StableHash(activeLoadTarget);
+        }
+
+        internal static string GetPendingFallbackIdentity()
+        {
+            return string.IsNullOrEmpty(pendingSaveTarget)
+                ? string.Empty
+                : "path_" + StableHash(pendingSaveTarget);
+        }
+
+        internal static string GetIdentityForPath(string path)
+        {
+            string normalized = Normalize(path);
+            return string.IsNullOrEmpty(normalized)
+                ? string.Empty
+                : "path_" + StableHash(normalized);
         }
 
         internal static string GetLogicalNewStoryAlias()
@@ -96,8 +110,6 @@ namespace Albummodelite
         {
             unchecked
             {
-                // 64-bit FNV-1a keeps physical save-path identities compact while making
-                // accidental slot collisions materially less likely than the old 32-bit key.
                 ulong hash = 14695981039346656037UL;
                 for (int i = 0; i < value.Length; i++)
                 {
@@ -120,7 +132,10 @@ namespace Albummodelite
                     null);
                 return method != null ? method.Invoke(instance, new[] { argument }) as string : string.Empty;
             }
-            catch { return string.Empty; }
+            catch
+            {
+                return string.Empty;
+            }
         }
     }
 
@@ -128,7 +143,10 @@ namespace Albummodelite
     internal static class AlbumSaveIdentity_LoadPath_Patch
     {
         [HarmonyPrefix]
-        private static void Prefix(string path) { AlbumSaveIdentity.CaptureLoadTarget(path); }
+        private static void Prefix(string path)
+        {
+            AlbumSaveIdentity.CaptureLoadTarget(path);
+        }
     }
 
     [HarmonyPatch(typeof(SaveManager), "LoadData", new Type[] { typeof(bool) })]
@@ -144,152 +162,117 @@ namespace Albummodelite
         }
     }
 
-    [HarmonyPatch(typeof(SaveManager), "SaveData", new Type[] { typeof(bool), typeof(bool) })]
-    internal static class AlbumSaveIdentity_SaveData_Patch
-    {
-        [HarmonyPrefix]
-        private static void Prefix(SaveManager __instance, bool autoSave)
-        {
-            // Vanilla returns before SaveEvent when an autosave is attempted while loading.
-            // Do not let a save that never happens change our active checkpoint identity.
-            if (autoSave && !SaveManager.CanContinue)
-                return;
-
-            AlbumSaveIdentity.CaptureSaveTarget(
-                AlbumSaveIdentity.InvokeSaveFileName(__instance, typeof(bool), autoSave));
-        }
-    }
-
-    [HarmonyPatch(typeof(SaveManager), "SaveChapter", new Type[] { typeof(tasks._chapter) })]
-    internal static class AlbumSaveIdentity_SaveChapter_Patch
-    {
-        [HarmonyPrefix]
-        private static void Prefix(SaveManager __instance, tasks._chapter Chapter)
-        {
-            AlbumSaveIdentity.CaptureSaveTarget(
-                AlbumSaveIdentity.InvokeSaveFileName(__instance, typeof(tasks._chapter), Chapter));
-        }
-    }
-
-    [HarmonyPatch(typeof(Popup_Save), "Save")]
-    internal static class AlbumSaveIdentity_PopupSave_Patch
-    {
-        [HarmonyPrefix]
-        private static void Prefix(Popup_Save __instance)
-        {
-            try
-            {
-                MethodInfo getId = typeof(Popup_Save).GetMethod("GetSaveFileID", BindingFlags.Instance | BindingFlags.NonPublic);
-                MethodInfo getNewId = typeof(Popup_Save).GetMethod("GetNewSaveFileID", BindingFlags.Instance | BindingFlags.NonPublic);
-                int id = getId != null ? Convert.ToInt32(getId.Invoke(__instance, null)) : 0;
-                if (id == 0 && getNewId != null)
-                    id = Convert.ToInt32(getNewId.Invoke(__instance, null));
-                string path = AlbumSaveIdentity.InvokeSaveFileName(__instance, typeof(int), id);
-                AlbumSaveIdentity.CaptureSaveTarget(path);
-            }
-            catch { }
-        }
-    }
-
-    [HarmonyPatch(typeof(Popup_Load_Story), "Do_Overwrite_Save")]
-    internal static class AlbumSaveIdentity_StoryOverwrite_Patch
-    {
-        [HarmonyPrefix]
-        private static void Prefix(Popup_Load_Story.save_info Save)
-        {
-            if (Save != null)
-                AlbumSaveIdentity.CaptureSaveTarget(Save.Path_File);
-        }
-    }
-
-    [HarmonyPatch(typeof(Popup_Load_Story), "Do_New_Save")]
-    internal static class AlbumSaveIdentity_StoryNewSave_Patch
-    {
-        [HarmonyPrefix]
-        private static void Prefix(string file_name)
-        {
-            try
-            {
-                string folder = staticVars.PlayerData != null ? staticVars.PlayerData.GetSaveFolderName() : string.Empty;
-                AlbumSaveIdentity.CaptureSaveTarget("story-new://" + folder + "/" + file_name);
-            }
-            catch { }
-        }
-    }
-
     /// <summary>
-    /// Do_New_Save computes its random manual-save directory after SaveEvent. Capture that
-    /// final path at the concrete SavedData callsite. The transpiler runs after IM Data Core
-    /// has prepared its checkpoint and before Save Write Ordering Fix replaces the vanilla
-    /// writer, while leaving the writer instruction itself untouched.
+    /// Every vanilla save route ultimately issues one DataSaver.saveData&lt;SavedData&gt; call.
+    /// Stage CAA at SaveEvent, then commit that staged document at this exact concrete target.
+    ///
+    /// This transpiler MUST run before IM Data Core's caller-level save transpiler. IMDC then
+    /// snapshots/forks the branch after our custom-JSON mutation is present, and Save Write
+    /// Ordering Fix subsequently freezes the same vanilla payload. This avoids the 4.1.0/4.1.1
+    /// timing bug where CAA could write a temporary/logical branch and IMDC could checkpoint a
+    /// different physical manual-save path.
     /// </summary>
-    [HarmonyPatch(typeof(Popup_Load_Story), nameof(Popup_Load_Story.Do_New_Save), new Type[] { typeof(string) })]
-    internal static class AlbumSaveIdentity_StoryNewSaveConcreteWrite_Patch
+    [HarmonyPatch]
+    internal static class AlbumSaveIdentity_ConcreteSaveWrite_Patch
     {
+        private static IEnumerable<MethodBase> TargetMethods()
+        {
+            yield return RequireMethod(
+                typeof(SaveManager),
+                nameof(SaveManager.SaveData),
+                new Type[] { typeof(bool), typeof(bool) });
+
+            yield return RequireMethod(
+                typeof(SaveManager),
+                nameof(SaveManager.SaveChapter),
+                new Type[] { typeof(tasks._chapter) });
+
+            yield return RequireMethod(
+                typeof(Popup_Save),
+                "Save",
+                Type.EmptyTypes);
+
+            yield return RequireMethod(
+                typeof(Popup_Load_Story),
+                "Do_Overwrite_Save",
+                new Type[] { typeof(Popup_Load_Story.save_info) });
+
+            yield return RequireMethod(
+                typeof(Popup_Load_Story),
+                nameof(Popup_Load_Story.Do_New_Save),
+                new Type[] { typeof(string) });
+        }
+
         [HarmonyTranspiler]
-        [HarmonyPriority(Priority.Normal)]
-        [HarmonyAfter("com.cosmo.imdatacore")]
-        [HarmonyBefore("com.cosmo.savewriteorderingfix")]
+        [HarmonyPriority(Priority.First)]
+        [HarmonyBefore(new string[]
+        {
+            "com.cosmo.imdatacore",
+            "com.cosmo.savewriteorderingfix"
+        })]
         private static IEnumerable<CodeInstruction> Transpiler(
             IEnumerable<CodeInstruction> instructions,
-            ILGenerator generator)
+            ILGenerator generator,
+            MethodBase __originalMethod)
         {
-            List<CodeInstruction> result = new List<CodeInstruction>(instructions);
-            int writeIndex = -1;
-            int writeCount = 0;
-
-            for (int i = 0; i < result.Count; i++)
-            {
-                if (!IsSavedDataWrite(result[i]))
-                    continue;
-                writeIndex = i;
-                writeCount++;
-            }
-
-            if (writeCount != 1 || writeIndex < 0)
-            {
-                Debug.LogWarning(
-                    "[AlbumSave] Expected one SavedData write in Do_New_Save; found " +
-                    writeCount + ". Concrete-path fallback capture was left disabled.");
-                return result;
-            }
-
             LocalBuilder dataLocal = generator.DeclareLocal(typeof(SaveManager.SavedData));
             LocalBuilder pathLocal = generator.DeclareLocal(typeof(string));
             LocalBuilder jsonLocal = generator.DeclareLocal(typeof(bool));
             LocalBuilder fullPathLocal = generator.DeclareLocal(typeof(bool));
-            MethodInfo captureMethod = AccessTools.Method(
+
+            MethodInfo commitMethod = AccessTools.Method(
                 typeof(AlbumPersistence),
                 nameof(AlbumPersistence.CaptureConcreteSaveWriteTarget),
                 new Type[] { typeof(string) });
-            if (captureMethod == null)
-                return result;
-
-            CodeInstruction original = result[writeIndex];
-            CodeInstruction first = new CodeInstruction(OpCodes.Stloc, fullPathLocal);
-            first.labels.AddRange(original.labels);
-            first.blocks.AddRange(original.blocks);
-            original.labels.Clear();
-            original.blocks.Clear();
-
-            List<CodeInstruction> injected = new List<CodeInstruction>
+            if (commitMethod == null)
             {
-                first,
-                new CodeInstruction(OpCodes.Stloc, jsonLocal),
-                new CodeInstruction(OpCodes.Stloc, pathLocal),
-                new CodeInstruction(OpCodes.Stloc, dataLocal),
-                new CodeInstruction(OpCodes.Ldloc, pathLocal),
-                new CodeInstruction(OpCodes.Call, captureMethod),
-                new CodeInstruction(OpCodes.Ldloc, dataLocal),
-                new CodeInstruction(OpCodes.Ldloc, pathLocal),
-                new CodeInstruction(OpCodes.Ldloc, jsonLocal),
-                new CodeInstruction(OpCodes.Ldloc, fullPathLocal),
-                original
-            };
+                throw new MissingMethodException(
+                    typeof(AlbumPersistence).FullName,
+                    nameof(AlbumPersistence.CaptureConcreteSaveWriteTarget));
+            }
 
-            result.RemoveAt(writeIndex);
-            result.InsertRange(writeIndex, injected);
-            return result;
+            int injectedCount = 0;
+
+            foreach (CodeInstruction instruction in instructions)
+            {
+                if (!IsSavedDataWrite(instruction))
+                {
+                    yield return instruction;
+                    continue;
+                }
+
+                CodeInstruction first = new CodeInstruction(OpCodes.Stloc, fullPathLocal);
+                first.labels.AddRange(instruction.labels);
+                first.blocks.AddRange(instruction.blocks);
+                instruction.labels.Clear();
+                instruction.blocks.Clear();
+
+                yield return first;
+                yield return new CodeInstruction(OpCodes.Stloc, jsonLocal);
+                yield return new CodeInstruction(OpCodes.Stloc, pathLocal);
+                yield return new CodeInstruction(OpCodes.Stloc, dataLocal);
+
+                yield return new CodeInstruction(OpCodes.Ldloc, pathLocal);
+                yield return new CodeInstruction(OpCodes.Call, commitMethod);
+
+                yield return new CodeInstruction(OpCodes.Ldloc, dataLocal);
+                yield return new CodeInstruction(OpCodes.Ldloc, pathLocal);
+                yield return new CodeInstruction(OpCodes.Ldloc, jsonLocal);
+                yield return new CodeInstruction(OpCodes.Ldloc, fullPathLocal);
+                yield return instruction;
+
+                injectedCount++;
+            }
+
+            if (injectedCount != 1)
+            {
+                throw new InvalidOperationException(
+                    "Expected exactly one SavedData write in " +
+                    (__originalMethod == null
+                        ? "an unknown vanilla save caller"
+                        : __originalMethod.DeclaringType.FullName + "." + __originalMethod.Name) +
+                    "; found " + injectedCount + ".");
+            }
         }
 
         private static bool IsSavedDataWrite(CodeInstruction instruction)
@@ -299,11 +282,10 @@ namespace Albummodelite
                 return false;
 
             MethodInfo method = instruction.operand as MethodInfo;
-            if (method == null || method.Name != "saveData" || !method.IsGenericMethod)
-                return false;
-
-            Type declaringType = method.DeclaringType;
-            if (declaringType != typeof(DataSaver))
+            if (method == null ||
+                method.DeclaringType != typeof(DataSaver) ||
+                method.Name != "saveData" ||
+                !method.IsGenericMethod)
                 return false;
 
             Type[] arguments = method.GetGenericArguments();
@@ -317,6 +299,13 @@ namespace Albummodelite
                    parameters[2].ParameterType == typeof(bool) &&
                    parameters[3].ParameterType == typeof(bool);
         }
-    }
 
+        private static MethodBase RequireMethod(Type type, string name, Type[] parameterTypes)
+        {
+            MethodInfo method = AccessTools.Method(type, name, parameterTypes);
+            if (method == null)
+                throw new MissingMethodException(type.FullName, name);
+            return method;
+        }
+    }
 }

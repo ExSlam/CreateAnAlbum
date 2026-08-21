@@ -11,6 +11,8 @@ namespace Albummodelite
     {
         private static bool initialized;
         private static bool dirty;
+        private static string stagedSaveJson = "";
+        private static int stagedAlbumCount;
 
         [Serializable]
         private class AlbumSaveFile
@@ -160,7 +162,7 @@ namespace Albummodelite
         public static void Initialize()
         {
             Debug.Log(
-                "[AlbumSave] *** PERSISTENCE v4.1 / SCHEMA v3 INITIALIZED ***"
+                "[AlbumSave] *** PERSISTENCE v4.1.2 / SCHEMA v3 INITIALIZED ***"
             );
 
             IMDataCoreIntegration.BeginGameplaySession();
@@ -173,6 +175,8 @@ namespace Albummodelite
 
             initialized = true;
             dirty = false;
+            stagedSaveJson = "";
+            stagedAlbumCount = 0;
             // mainScript.Start can run after the vanilla SavedData assignment/LoadEvent on
             // some scene-load paths. Always schedule one stabilized initial read so album,
             // production, and chart state do not depend on the player opening F2/F3/F8 first.
@@ -202,6 +206,8 @@ namespace Albummodelite
 
             initialized = false;
             dirty = false;
+            stagedSaveJson = "";
+            stagedAlbumCount = 0;
             pendingLoad = false;
             pendingCandidateId = "";
             pendingStableFrames = 0;
@@ -218,19 +224,36 @@ namespace Albummodelite
 
         private static void OnGameSave()
         {
-            Debug.Log(
-                "[AlbumSave] Idol Manager save detected."
-            );
+            Debug.Log("[AlbumSave] Idol Manager save detected.");
 
-            string targetId = GetSaveId();
-            bool targetChanged =
-                !string.IsNullOrEmpty(targetId) &&
-                !string.Equals(loadedSaveId, targetId, StringComparison.Ordinal);
+            if (!initialized || pendingLoad)
+            {
+                Debug.LogWarning("[AlbumSave] Save snapshot skipped during load transition.");
+                return;
+            }
 
-            // A Save As/manual/autosave fork must get its own supplemental checkpoint even
-            // when Create An Album itself has not changed since the previous vanilla save.
-            FlushDirty(targetChanged);
-            AlbumSaveIdentity.ClearPendingSaveTarget();
+            try
+            {
+                // SaveEvent fires before every real vanilla SavedData write. Capture the live
+                // CAA state here, but do not choose/rebind a save identity yet. Autosave, Save As,
+                // and Story new-save destinations are only authoritative at the concrete
+                // DataSaver<SavedData> call site.
+                Albums.DeduplicateInPlace();
+                bool wasDirty = dirty;
+                AlbumSaveFile file = BuildSaveFile();
+                stagedSaveJson = JsonUtility.ToJson(file, true);
+                stagedAlbumCount = file.Albums.Count;
+                Debug.Log(
+                    "[AlbumSave] Staged " + stagedAlbumCount +
+                    " album(s), chart state, and production state for the pending vanilla checkpoint" +
+                    (wasDirty ? " (dirty runtime state)." : " (checkpoint copy)."));
+            }
+            catch (Exception ex)
+            {
+                stagedSaveJson = "";
+                stagedAlbumCount = 0;
+                Debug.LogError("[AlbumSave] Could not stage save state:\n" + ex);
+            }
         }
 
         private static void OnGameLoad()
@@ -241,6 +264,8 @@ namespace Albummodelite
             AlbumPopupHost.Reset();
             AlbumChartUpdatePopup.ResetForSaveLoad();
             AlbumProductionManager.Shutdown();
+            stagedSaveJson = "";
+            stagedAlbumCount = 0;
             pendingCandidateId = "";
             pendingStableFrames = 0;
             pendingRetryFrames = 0;
@@ -392,128 +417,97 @@ namespace Albummodelite
         }
 
         /// <summary>
-        /// Popup_Load_Story.Do_New_Save generates its final physical save directory only after
-        /// SaveEvent has already fired. A caller-level transpiler supplies that concrete path
-        /// immediately before vanilla writes SavedData so the standalone mirror follows the
-        /// same branch/checkpoint instead of remaining attached to a temporary alias.
+        /// Commits the SaveEvent snapshot to the exact physical vanilla save target immediately
+        /// before IM Data Core prepares that same SavedData checkpoint. The caller-level Harmony
+        /// transpiler runs before IMDC and Save Write Ordering Fix, so all three systems observe
+        /// one concrete branch/path. Writing a checkpoint never rebinds loadedSaveId; only loading
+        /// a save may change the live session's loaded identity.
         /// </summary>
         internal static void CaptureConcreteSaveWriteTarget(string dataFileName)
         {
             if (!initialized || string.IsNullOrEmpty(dataFileName))
                 return;
 
+            // Never checkpoint a not-yet-restored CAA runtime. Vanilla can autosave during
+            // scene/load transitions; skipping our supplemental write is safer than turning
+            // a transient empty runtime into an authoritative empty album checkpoint.
+            if (pendingLoad)
+            {
+                stagedSaveJson = "";
+                stagedAlbumCount = 0;
+                Debug.LogWarning(
+                    "[AlbumSave] Supplemental save skipped because album state is still loading.");
+                return;
+            }
+
+            string targetId = AlbumSaveIdentity.GetIdentityForPath(dataFileName);
+            if (string.IsNullOrEmpty(targetId))
+            {
+                Debug.LogWarning("[AlbumSave] Concrete save commit skipped: target path could not be normalized.");
+                return;
+            }
+
             try
             {
                 AlbumSaveIdentity.CaptureSaveTarget(dataFileName);
-                string targetId = GetFallbackSaveId();
-                if (string.IsNullOrEmpty(targetId) ||
-                    string.Equals(loadedSaveId, targetId, StringComparison.Ordinal))
-                    return;
 
-                loadedSaveId = targetId;
-                AlbumProductionManager.RebindSaveId(targetId);
-
-                AlbumSaveFile file = BuildSaveFile();
-                string json = JsonUtility.ToJson(file, true);
-                string path = GetPathForSaveId(targetId);
-                if (file.Albums.Count == 0 && ExistingFileHasAlbums(path))
+                string json = stagedSaveJson;
+                int albumCount = stagedAlbumCount;
+                if (string.IsNullOrEmpty(json))
                 {
-                    Debug.LogError("[AlbumSave] EMPTY SAVE BLOCKED for concrete Save As target: " + path);
-                    return;
+                    // Defensive fallback for a third-party caller that reaches DataSaver without
+                    // invoking vanilla SaveEvent. This must still snapshot the live state rather
+                    // than reuse some earlier checkpoint.
+                    Albums.DeduplicateInPlace();
+                    AlbumSaveFile fallbackFile = BuildSaveFile();
+                    json = JsonUtility.ToJson(fallbackFile, true);
+                    albumCount = fallbackFile.Albums.Count;
                 }
-
-                WriteAllTextAtomic(path, json);
-                dirty = false;
-                AlbumSaveIdentity.ClearPendingSaveTarget();
-                Debug.Log("[AlbumSave] Bound supplemental state to generated save path " + targetId + ".");
-            }
-            catch (Exception ex)
-            {
-                Debug.LogWarning("[AlbumSave] Could not bind generated save path: " + ex.Message);
-            }
-        }
-
-        private static void FlushDirty(bool forceCheckpoint = false)
-        {
-            if (!initialized || (!dirty && !forceCheckpoint))
-                return;
-
-            try
-            {
-                string saveId = GetSaveId();
-                if (string.IsNullOrEmpty(saveId))
-                {
-                    Debug.LogWarning("[AlbumSave] Save blocked: no stable save identity.");
-                    return;
-                }
-
-                if (pendingLoad)
-                {
-                    Debug.LogWarning("[AlbumSave] Save deferred during load transition.");
-                    return;
-                }
-
-                // Save As / manual-slot writes are legitimate forks. The vanilla caller prefix has
-                // already captured the target path before SaveEvent runs, so snapshot the currently
-                // loaded state into that new identity rather than rejecting the write.
-                if (!string.Equals(loadedSaveId, saveId, StringComparison.Ordinal))
-                {
-                    if (string.IsNullOrEmpty(loadedSaveId))
-                    {
-                        Debug.LogWarning("[AlbumSave] Save blocked because no album state is loaded.");
-                        return;
-                    }
-                    Debug.Log("[AlbumSave] Forking album state into save target " + saveId + ".");
-                    loadedSaveId = saveId;
-                    AlbumProductionManager.RebindSaveId(saveId);
-                }
-
-                Albums.DeduplicateInPlace();
-                AlbumSaveFile file = BuildSaveFile();
-                string json = JsonUtility.ToJson(file, true);
 
                 bool committed = false;
+
+                // This call intentionally occurs BEFORE IMDC's PrepareVanillaSaveWrite injection.
+                // IMDC therefore forks/persists the branch only after CAA's custom JSON mutation
+                // is present, including for random manual-save paths created after SaveEvent.
                 if (IMDataCoreIntegration.IsReady)
                     committed = IMDataCoreIntegration.TrySetState(json);
 
-                // Always keep a checkpoint-aware standalone mirror when a concrete vanilla
-                // path is known. This gives clean fallback if IM Data Core is later disabled.
-                string fallbackId = GetFallbackSaveId();
-                if (!string.IsNullOrEmpty(fallbackId))
+                try
                 {
-                    string fallbackPath = GetPathForSaveId(fallbackId);
-                    if (file.Albums.Count == 0 && ExistingFileHasAlbums(fallbackPath))
-                    {
-                        Debug.LogError("[AlbumSave] EMPTY SAVE BLOCKED. Existing album data was preserved: " + fallbackPath);
-                        return;
-                    }
+                    string fallbackPath = GetPathForSaveId(targetId);
                     WriteAllTextAtomic(fallbackPath, json);
                     committed = true;
                 }
-
-                // If there is no concrete path yet (rare early story-save path), preserve the
-                // exact current identity rather than dropping the save.
-                if (!committed)
+                catch (Exception ex)
                 {
-                    string path = GetPathForSaveId(saveId);
-                    if (file.Albums.Count == 0 && ExistingFileHasAlbums(path))
-                    {
-                        Debug.LogError("[AlbumSave] EMPTY SAVE BLOCKED. Existing album data was preserved: " + path);
-                        return;
-                    }
-                    WriteAllTextAtomic(path, json);
-                    committed = true;
+                    Debug.LogWarning("[AlbumSave] Standalone checkpoint mirror failed: " + ex.Message);
                 }
 
                 if (committed)
                 {
                     dirty = false;
-                    Debug.Log("[AlbumSave] Saved " + file.Albums.Count + " album(s), chart state, and production state for " + saveId + ".");
+                    Debug.Log(
+                        "[AlbumSave] Committed " + albumCount +
+                        " album(s), chart state, and production state to concrete target " +
+                        targetId + ".");
+                }
+                else
+                {
+                    dirty = true;
+                    Debug.LogWarning(
+                        "[AlbumSave] Supplemental checkpoint could not be committed; state remains dirty.");
                 }
             }
             catch (Exception ex)
             {
-                Debug.LogError("[AlbumSave] Save failed:\n" + ex);
+                dirty = true;
+                Debug.LogError("[AlbumSave] Concrete save commit failed:\n" + ex);
+            }
+            finally
+            {
+                stagedSaveJson = "";
+                stagedAlbumCount = 0;
+                AlbumSaveIdentity.ClearPendingSaveTarget();
             }
         }
 
@@ -660,7 +654,10 @@ namespace Albummodelite
                 // are intentionally dirty until the player's next real Idol Manager save.
                 if (IMDataCoreIntegration.IsReady && source != "IM Data Core")
                 {
-                    IMDataCoreIntegration.TrySetState(json);
+                    // Do not create a custom-data mutation while vanilla is still inside its
+                    // load boundary. Mark the restored fallback state dirty so the next actual
+                    // vanilla save commits it through the concrete checkpoint pipeline.
+                    MarkDirty();
                 }
                 else if (source == "IM Data Core" && !string.IsNullOrEmpty(fallbackId))
                 {
@@ -1248,7 +1245,7 @@ namespace Albummodelite
             // target, not to which optional persistence backend happens to be ready this frame.
             // IM Data Core can bootstrap slightly after mainScript.Start; using its active key
             // here would make the identity change mid-session and could reload over dirty state.
-            string fallback = GetFallbackSaveId();
+            string fallback = AlbumSaveIdentity.GetActiveFallbackIdentity();
             return !string.IsNullOrEmpty(fallback)
                 ? fallback
                 : GetLegacyCampaignSaveId();
@@ -1256,7 +1253,7 @@ namespace Albummodelite
 
         private static string GetFallbackSaveId()
         {
-            string id = AlbumSaveIdentity.GetFallbackIdentity();
+            string id = AlbumSaveIdentity.GetActiveFallbackIdentity();
             if (!string.IsNullOrEmpty(id))
                 return id;
 
