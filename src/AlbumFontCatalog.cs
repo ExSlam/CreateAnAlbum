@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using UnityEngine;
 
 namespace Albummodelite
@@ -27,7 +28,17 @@ namespace Albummodelite
     internal static class AlbumFontCatalog
     {
         private static readonly List<AlbumFontOption> options = new List<AlbumFontOption>();
-        private static AssetBundle packagedFontBundle;
+        // Keep AssetBundle late-bound. Idol Manager's shipped reference set exposes a reduced
+        // compile-time UnityEngine.AssetBundle surface even though the player runtime provides the
+        // full AssetBundleModule API. Reflection lets CAA invoke the real runtime API without
+        // compiling against methods missing from the game's reference assemblies.
+        private static object packagedFontBundle;
+        private static Type assetBundleType;
+        private static MethodInfo assetBundleLoadFromFile;
+        private static MethodInfo assetBundleGetAllAssetNames;
+        private static MethodInfo assetBundleLoadAssetByType;
+        private static MethodInfo assetBundleLoadAssetGeneric;
+        private static MethodInfo assetBundleUnload;
         private static bool loaded;
 
         private sealed class PackagedFont
@@ -216,7 +227,7 @@ namespace Albummodelite
                     // Shutdown happens after returning to the main menu, where CAA cover objects
                     // from the gameplay scene are no longer needed. Destroy the imported bundle
                     // assets as well so repeated game sessions do not accumulate duplicate Fonts.
-                    packagedFontBundle.Unload(true);
+                    InvokeAssetBundleUnload(packagedFontBundle, true);
                 }
                 catch (Exception ex)
                 {
@@ -246,7 +257,8 @@ namespace Albummodelite
 
             try
             {
-                packagedFontBundle = AssetBundle.LoadFromFile(bundlePath);
+                EnsureAssetBundleApi();
+                packagedFontBundle = assetBundleLoadFromFile.Invoke(null, new object[] { bundlePath });
             }
             catch (Exception ex)
             {
@@ -268,7 +280,8 @@ namespace Albummodelite
             string[] bundleAssetNames;
             try
             {
-                bundleAssetNames = packagedFontBundle.GetAllAssetNames() ?? new string[0];
+                object result = assetBundleGetAllAssetNames.Invoke(packagedFontBundle, null);
+                bundleAssetNames = result as string[] ?? new string[0];
             }
             catch (Exception ex)
             {
@@ -321,7 +334,7 @@ namespace Albummodelite
             try
             {
                 // The recommended CAA bundle builder assigns these short addressable names.
-                font = packagedFontBundle.LoadAsset<Font>(packaged.BundleAssetName);
+                font = InvokeAssetBundleLoadFont(packagedFontBundle, packaged.BundleAssetName);
             }
             catch (Exception ex)
             {
@@ -363,7 +376,7 @@ namespace Albummodelite
 
                 try
                 {
-                    font = packagedFontBundle.LoadAsset<Font>(assetName);
+                    font = InvokeAssetBundleLoadFont(packagedFontBundle, assetName);
                 }
                 catch (Exception ex)
                 {
@@ -377,6 +390,178 @@ namespace Albummodelite
             }
 
             return null;
+        }
+
+        private static void EnsureAssetBundleApi()
+        {
+            if (assetBundleType != null &&
+                assetBundleLoadFromFile != null &&
+                assetBundleGetAllAssetNames != null &&
+                assetBundleUnload != null &&
+                (assetBundleLoadAssetByType != null || assetBundleLoadAssetGeneric != null))
+                return;
+
+            assetBundleType = FindUnityAssetBundleType();
+            if (assetBundleType == null)
+                throw new InvalidOperationException(
+                    "UnityEngine.AssetBundle runtime type was not found. " +
+                    "UnityEngine.AssetBundleModule may not be loaded by this Idol Manager build.");
+
+            const BindingFlags PublicStatic = BindingFlags.Public | BindingFlags.Static;
+            const BindingFlags PublicInstance = BindingFlags.Public | BindingFlags.Instance;
+
+            assetBundleLoadFromFile = assetBundleType.GetMethod(
+                "LoadFromFile",
+                PublicStatic,
+                null,
+                new[] { typeof(string) },
+                null);
+
+            assetBundleGetAllAssetNames = assetBundleType.GetMethod(
+                "GetAllAssetNames",
+                PublicInstance,
+                null,
+                Type.EmptyTypes,
+                null);
+
+            assetBundleLoadAssetByType = assetBundleType.GetMethod(
+                "LoadAsset",
+                PublicInstance,
+                null,
+                new[] { typeof(string), typeof(Type) },
+                null);
+
+            assetBundleLoadAssetGeneric = assetBundleType
+                .GetMethods(PublicInstance)
+                .FirstOrDefault(method =>
+                    method.Name == "LoadAsset" &&
+                    method.IsGenericMethodDefinition &&
+                    method.GetGenericArguments().Length == 1 &&
+                    method.GetParameters().Length == 1 &&
+                    method.GetParameters()[0].ParameterType == typeof(string));
+
+            assetBundleUnload = assetBundleType.GetMethod(
+                "Unload",
+                PublicInstance,
+                null,
+                new[] { typeof(bool) },
+                null);
+
+            if (assetBundleLoadFromFile == null ||
+                assetBundleGetAllAssetNames == null ||
+                assetBundleUnload == null ||
+                (assetBundleLoadAssetByType == null && assetBundleLoadAssetGeneric == null))
+            {
+                throw new MissingMethodException(
+                    "The loaded UnityEngine.AssetBundle runtime type does not expose the APIs " +
+                    "required by Create An Album (LoadFromFile, GetAllAssetNames, LoadAsset, Unload). " +
+                    "Runtime assembly: " + assetBundleType.Assembly.FullName);
+            }
+
+            Debug.Log(
+                "[AlbumFonts] Bound native AssetBundle runtime API from " +
+                assetBundleType.Assembly.FullName + ".");
+        }
+
+        private static Type FindUnityAssetBundleType()
+        {
+            Assembly[] assemblies = AppDomain.CurrentDomain.GetAssemblies();
+            for (int i = 0; i < assemblies.Length; i++)
+            {
+                Type candidate = null;
+                try
+                {
+                    candidate = assemblies[i].GetType("UnityEngine.AssetBundle", false);
+                }
+                catch
+                {
+                    // Ignore partially-loadable unrelated assemblies and keep searching.
+                }
+
+                if (candidate != null && HasAssetBundleLoadFromFile(candidate))
+                    return candidate;
+            }
+
+            // AssetBundleModule may not have been touched yet. Asking the CLR to load the Unity
+            // module by its normal assembly name is safe in the game process and does not introduce
+            // a compile-time reference from CAA.
+            try
+            {
+                Assembly module = Assembly.Load("UnityEngine.AssetBundleModule");
+                Type candidate = module == null
+                    ? null
+                    : module.GetType("UnityEngine.AssetBundle", false);
+                if (candidate != null && HasAssetBundleLoadFromFile(candidate))
+                    return candidate;
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning(
+                    "[AlbumFonts] Could not explicitly load UnityEngine.AssetBundleModule: " +
+                    ex.Message);
+            }
+
+            // Last chance: return any loaded AssetBundle type so EnsureAssetBundleApi can produce a
+            // precise missing-method diagnostic rather than a misleading type-not-found message.
+            for (int i = 0; i < assemblies.Length; i++)
+            {
+                try
+                {
+                    Type candidate = assemblies[i].GetType("UnityEngine.AssetBundle", false);
+                    if (candidate != null)
+                        return candidate;
+                }
+                catch
+                {
+                }
+            }
+
+            return null;
+        }
+
+        private static bool HasAssetBundleLoadFromFile(Type candidate)
+        {
+            if (candidate == null)
+                return false;
+
+            return candidate.GetMethod(
+                "LoadFromFile",
+                BindingFlags.Public | BindingFlags.Static,
+                null,
+                new[] { typeof(string) },
+                null) != null;
+        }
+
+        private static Font InvokeAssetBundleLoadFont(object bundle, string assetName)
+        {
+            if (bundle == null || string.IsNullOrEmpty(assetName))
+                return null;
+
+            EnsureAssetBundleApi();
+
+            object result;
+            if (assetBundleLoadAssetByType != null)
+            {
+                result = assetBundleLoadAssetByType.Invoke(
+                    bundle,
+                    new object[] { assetName, typeof(Font) });
+            }
+            else
+            {
+                MethodInfo closed = assetBundleLoadAssetGeneric.MakeGenericMethod(typeof(Font));
+                result = closed.Invoke(bundle, new object[] { assetName });
+            }
+
+            return result as Font;
+        }
+
+        private static void InvokeAssetBundleUnload(object bundle, bool unloadAllLoadedObjects)
+        {
+            if (bundle == null)
+                return;
+
+            EnsureAssetBundleApi();
+            assetBundleUnload.Invoke(bundle, new object[] { unloadAllLoadedObjects });
         }
 
         private static void AddMissingPackagedFallbacks()

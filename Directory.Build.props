@@ -56,9 +56,6 @@
     <Reference Include="UnityEngine.ImageConversionModule" Private="false">
       <HintPath>$(dllDir)\UnityEngine.ImageConversionModule.dll</HintPath>
     </Reference>
-    <Reference Include="UnityEngine.AssetBundleModule" Private="false">
-      <HintPath>$(dllDir)\UnityEngine.AssetBundleModule.dll</HintPath>
-    </Reference>
   </ItemGroup>
 
   <ItemGroup Condition="Exists('$(MSBuildProjectDirectory)\assets')">
