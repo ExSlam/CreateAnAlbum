@@ -37,7 +37,7 @@ namespace Albummodelite
             new List<PendingCommitValidation>();
 
         [Serializable]
-        private class AlbumSaveFile
+        internal sealed class AlbumSaveFile
         {
             public int Version = 4;
             public long WrittenUtcTicks;
@@ -51,7 +51,7 @@ namespace Albummodelite
         }
 
         [Serializable]
-        private class AlbumSaveEntry
+        internal sealed class AlbumSaveEntry
         {
             public int ID;
             public string Title = "";
@@ -197,7 +197,7 @@ namespace Albummodelite
         public static void Initialize()
         {
             Debug.Log(
-                "[AlbumSave] *** PERSISTENCE v4.2.0 / SCHEMA v4 INITIALIZED ***"
+                "[AlbumSave] *** PERSISTENCE v4.2.1 / SCHEMA v4 INITIALIZED ***"
             );
 
             IMDataCoreIntegration.BeginGameplaySession();
@@ -289,7 +289,7 @@ namespace Albummodelite
                 Albums.DeduplicateInPlace();
                 bool wasDirty = dirty;
                 AlbumSaveFile file = BuildSaveFile();
-                stagedSaveJson = JsonUtility.ToJson(file, true);
+                stagedSaveJson = AlbumSaveJson.Serialize(file);
                 stagedAlbumCount = file.Albums.Count;
                 stagedDirtyGeneration = dirtyGeneration;
                 Debug.Log(
@@ -572,14 +572,14 @@ namespace Albummodelite
                 }
                 else
                 {
-                    file = JsonUtility.FromJson<AlbumSaveFile>(json);
+                    file = AlbumSaveJson.Deserialize(json);
                     if (file == null || file.Albums == null)
                         throw new InvalidDataException("The staged album save document could not be parsed.");
                 }
 
                 file.CheckpointBindingVersion = CheckpointBindingVersion;
                 file.VanillaCheckpoint = checkpoint;
-                json = JsonUtility.ToJson(file, true);
+                json = AlbumSaveJson.Serialize(file);
 
                 // This mutation must stay before IMDC's concrete-save preparation so its branch
                 // receives the same checkpoint-bound CAA document. IMDC is recovery storage,
@@ -864,8 +864,42 @@ namespace Albummodelite
                         return true;
                     }
 
+                    AlbumSaveFile headerOnlyMetadata;
+                    if (TrySelectKnownJsonUtilityHeaderOnlyRecovery(
+                            fallbackJson,
+                            backupJson,
+                            imdcJson,
+                            out headerOnlyMetadata))
+                    {
+                        // CAA 4.2.0's Unity JsonUtility failure produced an exact five-scalar
+                        // envelope while silently deleting Albums, ProductionProject, and the
+                        // checkpoint object. Those omitted records are not recoverable from that
+                        // document, but the known shape must not permanently write-block the slot.
+                        // Preserve what was written, start a clean runtime because the omitted
+                        // records cannot be reconstructed from this envelope, then mark dirty so
+                        // the next REAL game save replaces it with the explicit complete schema.
+                        PreserveLoadFailureCopy(path);
+                        PreserveLoadFailureCopy(backupPath);
+                        Albums.AlbumList.Clear();
+                        loadingFileVersion = 4;
+                        CompleteLoadContext(
+                            saveId,
+                            headerOnlyMetadata.LastChartProcessedTicks,
+                            null,
+                            headerOnlyMetadata.LegacyProductionMigrationCompleted);
+                        RivalAlbumManager.RebuildIdAllocator();
+                        MarkDirty();
+                        Debug.LogWarning(
+                            "[AlbumSave] Recovered from the known CAA 4.2.0 JsonUtility header-only save bug. " +
+                            "The broken mirrors were preserved for diagnostics; omitted album/project records " +
+                            "cannot be reconstructed, but this slot is writable again and future saves use " +
+                            "the explicit CAA JSON codec.");
+                        return true;
+                    }
+
                     // Existing-but-unusable state is NOT evidence that the player has zero
-                    // albums. Keep retrying/recovering without ever blessing an empty state.
+                    // albums. Keep retrying/recovering without ever blessing an unknown malformed
+                    // document as valid state.
                     Debug.LogWarning(
                         "[AlbumSave] Supplemental state exists for " + saveId +
                         " but no safe candidate could be selected. Refusing destructive empty-state recovery.");
@@ -920,7 +954,7 @@ namespace Albummodelite
                 {
                     file.CheckpointBindingVersion = CheckpointBindingVersion;
                     file.VanillaCheckpoint = currentCheckpoint;
-                    json = JsonUtility.ToJson(file, true);
+                    json = AlbumSaveJson.Serialize(file);
                 }
 
                 if ((selectedBackup || selectedImdc || selectedLegacyUnbound) &&
@@ -972,6 +1006,46 @@ namespace Albummodelite
             return File.ReadAllText(path);
         }
 
+        private static bool TrySelectKnownJsonUtilityHeaderOnlyRecovery(
+            string exactJson,
+            string backupJson,
+            string imDataCoreJson,
+            out AlbumSaveFile metadata)
+        {
+            metadata = null;
+            string[] candidates = { exactJson, backupJson, imDataCoreJson };
+            bool sawCandidate = false;
+
+            for (int i = 0; i < candidates.Length; i++)
+            {
+                string candidate = candidates[i];
+                if (string.IsNullOrWhiteSpace(candidate))
+                    continue;
+
+                sawCandidate = true;
+                AlbumSaveFile parsedMetadata;
+                if (!AlbumSaveJson.TryReadKnownJsonUtilityHeaderOnly(
+                        candidate,
+                        out parsedMetadata) ||
+                    parsedMetadata == null)
+                {
+                    // Never use the narrow recovery path when even one available candidate has
+                    // an unknown shape. That candidate may contain data a future/manual repair can
+                    // recover, so the normal fail-closed protection must remain in force.
+                    metadata = null;
+                    return false;
+                }
+
+                if (metadata == null ||
+                    parsedMetadata.WrittenUtcTicks > metadata.WrittenUtcTicks)
+                {
+                    metadata = parsedMetadata;
+                }
+            }
+
+            return sawCandidate && metadata != null;
+        }
+
         private static bool TryParseCompatibleCandidate(
             string json,
             bool fromImDataCore,
@@ -990,7 +1064,7 @@ namespace Albummodelite
 
             try
             {
-                file = JsonUtility.FromJson<AlbumSaveFile>(json);
+                file = AlbumSaveJson.Deserialize(json);
             }
             catch (Exception ex)
             {
@@ -1356,7 +1430,7 @@ namespace Albummodelite
                 {
                     try
                     {
-                        AlbumSaveFile file = JsonUtility.FromJson<AlbumSaveFile>(
+                        AlbumSaveFile file = AlbumSaveJson.Deserialize(
                             File.ReadAllText(sidecarPath));
                         string boundPath =
                             file != null && file.VanillaCheckpoint != null
@@ -1539,7 +1613,7 @@ namespace Albummodelite
                     File.ReadAllText(path);
 
                 AlbumSaveFile file =
-                    JsonUtility.FromJson<AlbumSaveFile>(
+                    AlbumSaveJson.Deserialize(
                         json
                     );
 
@@ -2189,7 +2263,7 @@ namespace Albummodelite
             {
                 try
                 {
-                    AlbumSaveFile legacy = JsonUtility.FromJson<AlbumSaveFile>(File.ReadAllText(candidate));
+                    AlbumSaveFile legacy = AlbumSaveJson.Deserialize(File.ReadAllText(candidate));
                     string storedPath = legacy != null && legacy.VanillaCheckpoint != null
                         ? legacy.VanillaCheckpoint.NormalizedSavePath
                         : string.Empty;

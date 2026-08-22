@@ -1,5 +1,13 @@
 # Create An Album changelog
 
+## 4.2.1
+
+- Replaced every `AlbumSaveFile` `JsonUtility` read/write with a CAA-specific explicit JSON codec modeled on IM Data Core's `LightweightSidecarJson` persistence rules. The writer deterministically emits the full schema-v4 envelope, including `VanillaCheckpoint`, `ProductionProject`, `Albums`, track/member ID arrays, historical member snapshots, portrait asset references, chart/sales fields, and cover-recipe fields.
+- Made schema-v4 parsing fail closed on missing required structure, duplicate object properties, invalid collection types, invalid integer/float types, and non-finite cover-layout floats. Unknown additive properties remain tolerated. A header-only JSON document can no longer be accepted as a legitimate empty album history.
+- Added a narrow migration for the exact five-scalar CAA 4.2.0 `JsonUtility` failure shape observed in real saves. When every available direct/backup/IMDC candidate has only that known unrecoverable shape, CAA preserves diagnostic copies, carries forward scalar chart/migration metadata, restores a writable slot, and rewrites a complete explicit envelope on the next genuine game save. Any unknown malformed candidate still retains the existing fail-closed write block.
+- Kept IM Data Core optional/reflection-only and continued sending IMDC and the direct exact-slot mirror the exact same checkpoint-bound serialized string before IMDC prepares/forks the vanilla checkpoint.
+- Bumped project and mod metadata version to 4.2.1; persistence schema remains v4.
+
 ## 4.2.0
 
 - Fixed the empty-sidecar failure mode: repeated checkpoint-load failure no longer clears the album list and certifies that empty runtime as writable. Existing unresolved CAA data is preserved with `.loadfailed_*` diagnostics and supplemental writes are blocked instead of overwriting it with `Albums: []`.

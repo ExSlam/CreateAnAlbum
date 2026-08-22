@@ -4,7 +4,7 @@
     <ModFolderName>CreateAnAlbum</ModFolderName>
     <RootNamespace>Albummodelite</RootNamespace>
     <AssemblyName>com.jordanss.createanalbum</AssemblyName>
-    <Version>4.2.0</Version>
+    <Version>4.2.1</Version>
   </PropertyGroup>
 
   <ItemGroup>
