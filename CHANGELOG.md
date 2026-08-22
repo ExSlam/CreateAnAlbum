@@ -1,5 +1,14 @@
 # Create An Album changelog
 
+## 4.2.2
+
+- Replaced the packaged-font GDI/private-registration pipeline with a native Unity AssetBundle provider. Cormorant Garamond, Cinzel, Cyberthrone, and Allura are loaded from `AlbumFonts/createanalbum_fonts` as imported `UnityEngine.Font` assets built with Unity 2019.4.23f1 for StandaloneWindows64.
+- Cover title and group-name rendering now uses ordinary `UnityEngine.UI.Text` for every font. The Win32 GDI sprite rasterizer and private/session font-registration code have been removed.
+- Kept the four historical Windows font choices (Georgia, Times New Roman, Arial Black, Segoe Script) through Unity's supported `Font.CreateDynamicFontFromOSFont` path only. No registration or GDI fallback is attempted.
+- Loose `CustomFonts/*.ttf` / `*.otf` files are no longer advertised or loaded. Existing folders are detected only to emit a clear warning; additional native CAA fonts must be imported into the font AssetBundle.
+- Added the compile-time-only `UnityEngine.AssetBundleModule.dll` reference required to use `AssetBundle.LoadFromFile`; it remains provided by Idol Manager at runtime.
+- Bumped project and mod metadata version to 4.2.2; persistence schema remains v4.
+
 ## 4.2.1
 
 - Replaced every `AlbumSaveFile` `JsonUtility` read/write with a CAA-specific explicit JSON codec modeled on IM Data Core's `LightweightSidecarJson` persistence rules. The writer deterministically emits the full schema-v4 envelope, including `VanillaCheckpoint`, `ProductionProject`, `Albums`, track/member ID arrays, historical member snapshots, portrait asset references, chart/sales fields, and cover-recipe fields.

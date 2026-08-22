@@ -93,35 +93,17 @@ namespace Albummodelite
                 ? "UNTITLED"
                 : album.Title.ToUpperInvariant();
             int titleSize = GetAutoTitleSize(titleValue, size);
-            Sprite rasterTitle = AlbumFontCatalog.RenderTextSprite(
-                album.FontKey, album.FontIndex, titleValue,
-                Mathf.Max(64, Mathf.RoundToInt(size * 0.84f)),
-                Mathf.Max(32, Mathf.RoundToInt(size * 0.20f)),
-                titleSize, textColor, TextAnchor.MiddleCenter);
-
-            if (rasterTitle != null)
-            {
-                Image titleImage = titleObj.AddComponent<Image>();
-                titleImage.sprite = rasterTitle;
-                titleImage.color = Color.white;
-                titleImage.preserveAspect = false;
-                titleImage.raycastTarget = false;
-                AlbumFontCatalog.TrackRenderedSpriteUsage(titleObj, rasterTitle);
-            }
-            else
-            {
-                Text titleText = titleObj.AddComponent<Text>();
-                titleText.font = AlbumFontCatalog.Resolve(album.FontKey, album.FontIndex);
-                titleText.text = titleValue;
-                titleText.alignment = TextAnchor.MiddleCenter;
-                titleText.fontSize = titleSize;
-                titleText.resizeTextForBestFit = true;
-                titleText.resizeTextMinSize = Mathf.Max(9, Mathf.RoundToInt(size * 0.035f));
-                titleText.resizeTextMaxSize = titleText.fontSize;
-                titleText.color = textColor;
-                titleText.fontStyle = FontStyle.Normal;
-                titleText.raycastTarget = false;
-            }
+            Text titleText = titleObj.AddComponent<Text>();
+            titleText.font = AlbumFontCatalog.Resolve(album.FontKey, album.FontIndex);
+            titleText.text = titleValue;
+            titleText.alignment = TextAnchor.MiddleCenter;
+            titleText.fontSize = titleSize;
+            titleText.resizeTextForBestFit = true;
+            titleText.resizeTextMinSize = Mathf.Max(9, Mathf.RoundToInt(size * 0.035f));
+            titleText.resizeTextMaxSize = titleText.fontSize;
+            titleText.color = textColor;
+            titleText.fontStyle = FontStyle.Normal;
+            titleText.raycastTarget = false;
 
             ApplyTitleEffect(titleObj, album, textColor);
 
@@ -158,33 +140,16 @@ namespace Albummodelite
                     ? "GROUP"
                     : album.GroupName.ToUpperInvariant();
                 int groupSize = Mathf.Max(7, Mathf.RoundToInt(size * 0.027f));
-                Sprite rasterGroup = AlbumFontCatalog.RenderTextSprite(
-                    album.FontKey, album.FontIndex, groupValue,
-                    Mathf.Max(48, Mathf.RoundToInt(size * 0.80f)),
-                    Mathf.Max(20, Mathf.RoundToInt(size * 0.07f)),
-                    groupSize, textColor, TextAnchor.MiddleCenter);
-                if (rasterGroup != null)
-                {
-                    Image groupImage = subtitle.AddComponent<Image>();
-                    groupImage.sprite = rasterGroup;
-                    groupImage.color = Color.white;
-                    groupImage.preserveAspect = false;
-                    groupImage.raycastTarget = false;
-                    AlbumFontCatalog.TrackRenderedSpriteUsage(subtitle, rasterGroup);
-                }
-                else
-                {
-                    Text st = subtitle.AddComponent<Text>();
-                    st.font = AlbumFontCatalog.Resolve(album.FontKey, album.FontIndex);
-                    st.text = groupValue;
-                    st.fontSize = groupSize;
-                    st.alignment = TextAnchor.MiddleCenter;
-                    st.resizeTextForBestFit = true;
-                    st.resizeTextMinSize = 6;
-                    st.resizeTextMaxSize = Mathf.Max(8, Mathf.RoundToInt(size * 0.035f));
-                    st.color = textColor;
-                    st.raycastTarget = false;
-                }
+                Text st = subtitle.AddComponent<Text>();
+                st.font = AlbumFontCatalog.Resolve(album.FontKey, album.FontIndex);
+                st.text = groupValue;
+                st.fontSize = groupSize;
+                st.alignment = TextAnchor.MiddleCenter;
+                st.resizeTextForBestFit = true;
+                st.resizeTextMinSize = 6;
+                st.resizeTextMaxSize = Mathf.Max(8, Mathf.RoundToInt(size * 0.035f));
+                st.color = textColor;
+                st.raycastTarget = false;
             }
         }
 

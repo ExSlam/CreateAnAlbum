@@ -1,0 +1,23 @@
+ManifestFileVersion: 0
+CRC: 4022436243
+Hashes:
+  AssetFileHash:
+    serializedVersion: 2
+    Hash: 5120f3d74bda98492807df623be6b1af
+  TypeTreeHash:
+    serializedVersion: 2
+    Hash: cea17de082da1dfd38b5ed053fc34ca1
+HashAppended: 0
+ClassTypes:
+- Class: 21
+  Script: {instanceID: 0}
+- Class: 28
+  Script: {instanceID: 0}
+- Class: 48
+  Script: {instanceID: 0}
+- Class: 128
+  Script: {instanceID: 0}
+SerializeReferenceClassIdentifiers: []
+Assets:
+- Assets/Fonts/Allura-Regular.ttf
+Dependencies: []

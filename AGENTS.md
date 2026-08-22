@@ -73,9 +73,11 @@ Create An Album embeds a minimal SavedData write-ordering fallback and is design
 - The background picker must remain horizontally scrollable and retain enough side padding that thumbnail outlines are not clipped by its mask.
 - Cover Design control changes must preserve both the outer page scroll and the nested left-options scroll across rebuilt layouts; do not call the generic refresh path from cover-control callbacks without the delayed multi-frame position restore.
 - Cover Design footer navigation (Back and Continue/Release progression) must be created independently of preview rendering so a cover/font exception can never trap the user on the page.
-- Packaged fonts belong in `assets/AlbumFonts` and are resolved through the shared album font catalog for both live previews and persisted cover rendering. Font resolution must not silently fail: keep explicit success/failure diagnostics, try embedded TTF naming identities, preserve the temporary Windows registration path needed by Unity 2019, and preserve the Win32 GDI rasterization fallback for cover title/subtitle rendering when Unity cannot expose the face. **Never add a `System.Drawing` load-time dependency**; Idol Manager's Mono runtime does not provide it. A TTF-rendering failure must return `null` to the normal game-font text fallback instead of aborting cover rendering.
+- Packaged fonts belong in `assets/AlbumFonts/createanalbum_fonts` and are resolved through the shared album font catalog for both live previews and persisted cover rendering. The bundle contains Unity-imported `Font` assets built for `StandaloneWindows64` with Unity 2019.4.23f1. Keep explicit success/failure diagnostics and preserve the stable packaged key order: Cormorant Garamond, Cinzel, Cyberthrone, Allura.
+- Do not reintroduce private/session Windows font registration, Win32 GDI font rasterization, or `System.Drawing` for CAA packaged fonts. Cover typography uses ordinary Unity UI `Text` with native `UnityEngine.Font` objects.
+- The historical Windows choices may use `Font.CreateDynamicFontFromOSFont` only when the family is already installed and Unity can resolve it.
 - Persisted font identity uses stable `FontKey` values. Keep `FontIndex` only for migration/backward compatibility.
-- `CustomFonts` is a runtime-created, user-managed sibling of `AlbumFonts` and is not a source asset directory.
+- Loose `CustomFonts/*.ttf` / `.otf` files are not a supported runtime font source in 4.2.2. Existing directories may be detected for diagnostics but must not be privately registered or rasterized.
 - The Album Chart supports cover art for all Top 20 entries through four-row virtualization. Do not regress to an eager twenty-cover build or a Top-4-only render gate.
 - Off-screen chart covers should be culled/deactivated and retained only within the bounded cache rather than destroyed/rebuilt on every scroll delta.
 
@@ -98,10 +100,11 @@ CreateAnAlbum_Overhauled/
 |   |-- AlbumBackgrounds/
 |   |   `-- <background images and optional subfolders; .png/.jpg/.jpeg>
 |   |-- AlbumFonts/
-|   |   |-- Allura-Regular.ttf
-|   |   |-- Cinzel-VariableFont_wght.ttf
-|   |   |-- CormorantGaramond-VariableFont_wght.ttf
-|   |   `-- Cyberthrone.ttf
+|   |   |-- createanalbum_fonts (required runtime AssetBundle; supplied for release packaging)
+|   |   |-- Allura-Regular.ttf (bundle source)
+|   |   |-- Cinzel-VariableFont_wght.ttf (bundle source)
+|   |   |-- CormorantGaramond-VariableFont_wght.ttf (bundle source)
+|   |   `-- Cyberthrone.ttf (bundle source)
 |   |-- Localization/
 |   |   `-- <language-code>/
 |   |       |-- strings.txt
@@ -127,11 +130,12 @@ Deploy the contents of `assets`, not the `assets` directory itself. The expected
 |-- AlbumBackgrounds/
 |   `-- <background images and optional subfolders; .png/.jpg/.jpeg>
 |-- AlbumFonts/
-|   |-- Allura-Regular.ttf
-|   |-- Cinzel-VariableFont_wght.ttf
-|   |-- CormorantGaramond-VariableFont_wght.ttf
-|   `-- Cyberthrone.ttf
-|-- CustomFonts/ (runtime-created; user .ttf files)
+|   |-- createanalbum_fonts
+|   |-- Allura-Regular.ttf (optional bundle source; not loaded at runtime)
+|   |-- Cinzel-VariableFont_wght.ttf (optional bundle source; not loaded at runtime)
+|   |-- CormorantGaramond-VariableFont_wght.ttf (optional bundle source; not loaded at runtime)
+|   `-- Cyberthrone.ttf (optional bundle source; not loaded at runtime)
+|-- CustomFonts/ (legacy user directory; ignored except for diagnostics)
 |-- Localization/
 |   `-- <language-code>/
 |       |-- strings.txt

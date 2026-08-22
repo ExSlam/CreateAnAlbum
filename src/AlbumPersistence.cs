@@ -197,7 +197,7 @@ namespace Albummodelite
         public static void Initialize()
         {
             Debug.Log(
-                "[AlbumSave] *** PERSISTENCE v4.2.1 / SCHEMA v4 INITIALIZED ***"
+                "[AlbumSave] *** PERSISTENCE v4.2.2 / SCHEMA v4 INITIALIZED ***"
             );
 
             IMDataCoreIntegration.BeginGameplaySession();

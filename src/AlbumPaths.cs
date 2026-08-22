@@ -16,6 +16,13 @@ namespace Albummodelite
             ModDirectory,
             "AlbumFonts");
 
+        internal static readonly string FontBundlePath = Path.Combine(
+            FontsDirectory,
+            "createanalbum_fonts");
+
+        // Kept only to detect and warn about legacy loose-font installations. CAA 4.2.2 does
+        // not create or load this directory because raw TTF/OTF import is not supported by the
+        // game's Unity runtime.
         internal static readonly string CustomFontsDirectory = Path.Combine(
             ModDirectory,
             "CustomFonts");
