@@ -14,6 +14,23 @@ namespace CreateAnAlbumChartTrackEnhancements
             SavedSongIds =
                 new Dictionary<string, List<int>>();
 
+        private static string saveContextId = string.Empty;
+
+        internal static void ResetForSaveContext(string saveId)
+        {
+            string next = saveId ?? string.Empty;
+            if (SavedSongIds.Count > 0 &&
+                !string.Equals(saveContextId, next, StringComparison.Ordinal))
+            {
+                Debug.Log(
+                    "[AlbumTrackRepair] Cleared " + SavedSongIds.Count +
+                    " remembered track set(s) for save-context change.");
+            }
+
+            SavedSongIds.Clear();
+            saveContextId = next;
+        }
+
         internal static string GetAlbumKey(AlbumData album)
         {
             if (album == null)

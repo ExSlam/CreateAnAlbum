@@ -6,6 +6,7 @@ using System.Linq;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
+using CreateAnAlbumGroupRules;
 
 namespace Albummodelite
 {
@@ -25,6 +26,8 @@ namespace Albummodelite
         private GameObject content;
         private ScrollRect contentScroll;
         private ScrollRect coverOptionsScroll;
+        private ScrollRect memberPickerScroll;
+        private int coverScrollRestoreGeneration;
         private AlbumStep renderedStep;
         private bool hasRenderedStep;
 
@@ -64,6 +67,7 @@ namespace Albummodelite
         private int selectedBackground = 0;
         private string selectedBackgroundKey = "";
         private float backgroundScrollPosition = 0f;
+        private float memberScrollPosition = 0f;
         private int selectedLayout = 2;
         private int selectedTextColor = 0;
 
@@ -104,7 +108,7 @@ namespace Albummodelite
             {
                 return AlbumPopupHost.Close(
                     AlbumPopupKind.Create,
-                    delegate { panel = null; }
+                    delegate { GroupAlbumRules.ResetPopupState(this); }
                 );
             }
 
@@ -266,7 +270,13 @@ namespace Albummodelite
                 step == AlbumStep.Cover && coverOptionsScroll != null
                     ? Mathf.Clamp01(coverOptionsScroll.verticalNormalizedPosition)
                     : 1f;
+            if (preserveScroll && step == AlbumStep.Cover && memberPickerScroll != null)
+            {
+                memberScrollPosition = Mathf.Clamp01(
+                    memberPickerScroll.horizontalNormalizedPosition);
+            }
             coverOptionsScroll = null;
+            memberPickerScroll = null;
 
             RectTransform contentRect = content != null
                 ? content.GetComponent<RectTransform>()
@@ -297,26 +307,38 @@ namespace Albummodelite
             }
             DrawStepHeader();
 
-            switch (step)
+            // Footer navigation is created before step content so a preview/font/layout
+            // exception can never strand the player on Cover Design without Back/Continue.
+            DrawButtons();
+
+            try
             {
-                case AlbumStep.Info:
-                    DrawInfo();
-                    break;
+                switch (step)
+                {
+                    case AlbumStep.Info:
+                        DrawInfo();
+                        break;
 
-                case AlbumStep.Members:
-                    DrawMembers();
-                    break;
+                    case AlbumStep.Members:
+                        DrawMembers();
+                        break;
 
-                case AlbumStep.Cover:
-                    DrawCoverDesigner();
-                    break;
+                    case AlbumStep.Cover:
+                        DrawCoverDesigner();
+                        break;
 
-                case AlbumStep.Release:
-                    DrawRelease();
-                    break;
+                    case AlbumStep.Release:
+                        DrawRelease();
+                        break;
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError(
+                    "[CreateAlbum/UI] Failed to render " + step +
+                    " step content; footer navigation was kept available.\n" + ex);
             }
 
-            DrawButtons();
             Canvas.ForceUpdateCanvases();
             if (contentScroll != null)
             {
@@ -336,6 +358,67 @@ namespace Albummodelite
                     panel,
                     panel.transform.parent.gameObject.layer
                 );
+            }
+        }
+
+        private void RefreshCoverDesignerPreservingScroll()
+        {
+            float outerPosition = contentScroll != null
+                ? Mathf.Clamp01(contentScroll.verticalNormalizedPosition)
+                : 1f;
+            float optionsPosition = coverOptionsScroll != null
+                ? Mathf.Clamp01(coverOptionsScroll.verticalNormalizedPosition)
+                : 1f;
+            float backgroundPosition = Mathf.Clamp01(backgroundScrollPosition);
+            float memberPosition = memberPickerScroll != null
+                ? Mathf.Clamp01(memberPickerScroll.horizontalNormalizedPosition)
+                : Mathf.Clamp01(memberScrollPosition);
+
+            int generation = ++coverScrollRestoreGeneration;
+            RefreshUI();
+
+            // Unity may recalculate nested ScrollRect bounds one or two frames after the
+            // controls are rebuilt. Reapply the captured positions after those layout passes
+            // so clicking a choice never snaps any part of the cover editor back to an edge.
+            StartCoroutine(RestoreCoverScrollAfterRefresh(
+                generation, outerPosition, optionsPosition, backgroundPosition, memberPosition));
+        }
+
+        private IEnumerator RestoreCoverScrollAfterRefresh(
+            int generation,
+            float outerPosition,
+            float optionsPosition,
+            float backgroundPosition,
+            float memberPosition)
+        {
+            for (int frame = 0; frame < 3; frame++)
+            {
+                if (generation != coverScrollRestoreGeneration || step != AlbumStep.Cover)
+                    yield break;
+
+                yield return null;
+                Canvas.ForceUpdateCanvases();
+
+                if (contentScroll != null)
+                {
+                    contentScroll.StopMovement();
+                    contentScroll.verticalNormalizedPosition = outerPosition;
+                }
+
+                if (coverOptionsScroll != null)
+                {
+                    coverOptionsScroll.StopMovement();
+                    coverOptionsScroll.verticalNormalizedPosition = optionsPosition;
+                }
+
+                backgroundScrollPosition = backgroundPosition;
+                memberScrollPosition = memberPosition;
+
+                if (memberPickerScroll != null)
+                {
+                    memberPickerScroll.StopMovement();
+                    memberPickerScroll.horizontalNormalizedPosition = memberPosition;
+                }
             }
         }
 
@@ -387,11 +470,7 @@ namespace Albummodelite
         {
             AlbumPopupHost.Close(
                 AlbumPopupKind.Create,
-                delegate
-                {
-                    panel = null;
-                    ResetAlbumCreation();
-                }
+                delegate { GroupAlbumRules.ResetPopupState(this); }
             );
         }
 
@@ -403,9 +482,13 @@ namespace Albummodelite
                 return;
             }
 
-            if (selectedSongs.Count < 6 || selectedSongs.Count > 10)
+            int minimumSongs = GroupAlbumRules.GetMinimumSongs(this);
+            int maximumSongs = GroupAlbumRules.GetMaximumSongs(this);
+            if (selectedSongs.Count < minimumSongs || selectedSongs.Count > maximumSongs)
             {
-                Debug.LogWarning("[Album] Album must contain 6 to 10 songs.");
+                Debug.LogWarning(
+                    "[Album] This release type requires " + minimumSongs +
+                    " to " + maximumSongs + " songs.");
                 return;
             }
 
@@ -436,6 +519,7 @@ namespace Albummodelite
             album.PlayerAlbum = true;
 
             album.Members = new List<data_girls.girls>(selectedGirls);
+            AlbumMemberRepair.CaptureAndGetSnapshots(album);
             album.Songs = new List<singles._single>(selectedSongs);
 
             album.Sales = 0L;
@@ -447,33 +531,9 @@ namespace Albummodelite
             album.PeakChartPosition = 0;
             album.WeeksOnChart = 0;
 
-            // Preserve all cover settings so this exact cover can be rebuilt
-            // later in the discography and album chart.
-            album.Theme = themeNames[selectedTheme];
-            album.ThemeIndex = selectedTheme;
-            album.BackgroundIndex = selectedBackground;
-            album.BackgroundKey = string.IsNullOrEmpty(selectedBackgroundKey)
-                ? AlbumBackgroundCatalog.GetKey(selectedBackground)
-                : selectedBackgroundKey;
-            album.LayoutIndex = selectedLayout;
-            album.FontIndex = selectedFont;
-            album.FontKey = AlbumFontCatalog.GetKey(selectedFont);
-            album.TextColorIndex = selectedTextColor;
-            album.TitlePosition = titlePosition;
-            album.ShowGroupName = showGroupName;
-            album.OrnamentStyle = ornamentStyle;
-            album.FrameStyle = frameStyle;
-            album.TitleEffect = titleEffect;
-            album.PortraitScale = portraitScale;
-            album.CenterEmphasis = centerEmphasis;
-            album.PortraitYOffset = portraitYOffset;
-            album.PortraitSpacing = portraitSpacing;
-            album.EffectsIntensity = effectsIntensity;
-
-            album.CenterMemberIndex =
-                selectedCenterGirl != null
-                    ? selectedGirls.IndexOf(selectedCenterGirl)
-                    : -1;
+            // Preserve every cover setting through the same mapper used by the live
+            // preview. This keeps the editor and persisted renderer on one data contract.
+            ApplyCurrentCoverSettings(album);
 
             Albums.AddAlbum(album);
 
@@ -498,11 +558,7 @@ namespace Albummodelite
 
             AlbumPopupHost.Close(
                 AlbumPopupKind.Create,
-                delegate
-                {
-                    panel = null;
-                    ResetAlbumCreation();
-                }
+                delegate { GroupAlbumRules.ResetPopupState(this); }
             );
         }
 
@@ -538,7 +594,7 @@ namespace Albummodelite
                 13,
                 FontStyle.Bold,
                 new Color(0.39f, 0.34f, 0.72f),
-                new Vector2(120, -78),
+                new Vector2(120, -148),
                 new Vector2(240, 24),
                 TextAnchor.MiddleLeft
             );
@@ -560,7 +616,7 @@ namespace Albummodelite
                 ir.anchorMax = new Vector2(0, 1);
                 ir.pivot = new Vector2(0, 1);
                 ir.sizeDelta = new Vector2(600, 42);
-                ir.anchoredPosition = new Vector2(120, -106);
+                ir.anchoredPosition = new Vector2(120, -174);
             }
 
             CreateText(
@@ -569,20 +625,28 @@ namespace Albummodelite
                 16,
                 FontStyle.Bold,
                 new Color(0.39f, 0.34f, 0.72f),
-                new Vector2(120, -170),
+                new Vector2(120, -232),
                 new Vector2(300, 28),
                 TextAnchor.MiddleLeft
             );
 
+            AlbumReleaseKind releaseKind =
+                CreateAnAlbumGroupRules.GroupAlbumRules.GetSelectedReleaseKind(this);
+            int minimumSongs = AlbumReleaseRules.GetMinimumSongs(releaseKind);
+            int maximumSongs = AlbumReleaseRules.GetMaximumSongs(releaseKind);
+            bool validSongCount = selectedSongs.Count >= minimumSongs &&
+                selectedSongs.Count <= maximumSongs;
+
             CreateText(
                 "SongsCount",
-                "Selected: " + selectedSongs.Count + " / 10   •   Minimum 6 songs",
+                "Selected: " + selectedSongs.Count + " / " + maximumSongs +
+                "   •   Minimum " + minimumSongs + " songs",
                 11,
                 FontStyle.Bold,
-                selectedSongs.Count >= 6
+                validSongCount
                     ? new Color(0.30f, 0.62f, 0.40f)
                     : new Color(0.65f, 0.42f, 0.42f),
-                new Vector2(430, -170),
+                new Vector2(430, -232),
                 new Vector2(360, 28),
                 TextAnchor.MiddleRight
             );
@@ -591,11 +655,13 @@ namespace Albummodelite
 
             CreateText(
                 "InfoTip",
-                "Choose 6–10 songs for the album. You can only continue after selecting at least 6.",
+                "Choose " + AlbumReleaseRules.GetRangeText(releaseKind) +
+                " songs for this " + AlbumReleaseRules.GetShortLabel(releaseKind) +
+                ". You can only continue after selecting at least " + minimumSongs + ".",
                 11,
                 FontStyle.Normal,
                 new Color(0.46f, 0.45f, 0.52f),
-                new Vector2(120, -420),
+                new Vector2(120, -442),
                 new Vector2(700, 30),
                 TextAnchor.MiddleLeft
             );
@@ -758,9 +824,10 @@ namespace Albummodelite
             }
             else
             {
-                if (selectedSongs.Count >= 10)
+                int maximumSongs = GroupAlbumRules.GetMaximumSongs(this);
+                if (selectedSongs.Count >= maximumSongs)
                 {
-                    Debug.Log("[Album] Maximum 10 songs.");
+                    Debug.Log("[Album] Maximum " + maximumSongs + " songs for this release type.");
                     return;
                 }
 
@@ -1092,71 +1159,7 @@ namespace Albummodelite
                 TextAnchor.MiddleLeft
             );
 
-            int maxThumbs = Mathf.Min(selectedGirls.Count, 6);
-
-            for (int i = 0; i < maxThumbs; i++)
-            {
-                GameObject thumb = new GameObject("MemberThumb_" + i);
-                thumb.transform.SetParent(controls.transform, false);
-
-                RectTransform tr = thumb.AddComponent<RectTransform>();
-                tr.anchorMin = new Vector2(0, 1);
-                tr.anchorMax = new Vector2(0, 1);
-                tr.pivot = new Vector2(0, 1);
-                tr.sizeDelta = new Vector2(34, 34);
-                tr.anchoredPosition = new Vector2(14 + (i * 43), -83);
-
-                Image image = thumb.AddComponent<Image>();
-                image.sprite = selectedGirls[i].texture.middle;
-                image.preserveAspect = true;
-
-                Outline o = thumb.AddComponent<Outline>();
-                bool isCenter = selectedCenterGirl == selectedGirls[i];
-                o.effectColor = isCenter
-                    ? new Color(0.95f, 0.72f, 0.20f)
-                    : new Color(0.75f, 0.72f, 0.88f);
-                o.effectDistance = isCenter
-                    ? new Vector2(2, -2)
-                    : new Vector2(1, -1);
-
-                Button centerButton = thumb.AddComponent<Button>();
-                int centerIndex = i;
-                centerButton.onClick.AddListener(() =>
-                {
-                    selectedCenterGirl = selectedGirls[centerIndex];
-                    RefreshUI();
-                });
-
-                if (isCenter)
-                {
-                    CreatePanelText(
-                        thumb.transform,
-                        "CenterCrown",
-                        "★",
-                        9,
-                        FontStyle.Bold,
-                        new Color(1f, 0.78f, 0.20f),
-                        new Vector2(22, 0),
-                        new Vector2(12, 12),
-                        TextAnchor.MiddleCenter
-                    );
-                }
-            }
-
-            if (selectedGirls.Count > 6)
-            {
-                CreatePanelText(
-                    controls.transform,
-                    "MoreMembers",
-                    "+" + (selectedGirls.Count - 6),
-                    11,
-                    FontStyle.Bold,
-                    new Color(0.39f, 0.34f, 0.72f),
-                    new Vector2(278, -83),
-                    new Vector2(34, 34),
-                    TextAnchor.MiddleCenter
-                );
-            }
+            CreateMemberPicker(controls.transform);
 
             // Layout
             CreatePanelText(
@@ -1187,7 +1190,7 @@ namespace Albummodelite
                     () =>
                     {
                         selectedLayout = index;
-                        RefreshUI();
+                        RefreshCoverDesignerPreservingScroll();
                     },
                     10
                 );
@@ -1232,7 +1235,7 @@ namespace Albummodelite
                     () =>
                     {
                         selectedTheme = index;
-                        RefreshUI();
+                        RefreshCoverDesignerPreservingScroll();
                     },
                     8
                 );
@@ -1284,7 +1287,7 @@ namespace Albummodelite
                     () =>
                     {
                         selectedFont = index;
-                        RefreshUI();
+                        RefreshCoverDesignerPreservingScroll();
                     },
                     8
                 );
@@ -1347,7 +1350,7 @@ namespace Albummodelite
                 button.onClick.AddListener(() =>
                 {
                     selectedTextColor = index;
-                    RefreshUI();
+                    RefreshCoverDesignerPreservingScroll();
                 });
             }
 
@@ -1392,7 +1395,7 @@ namespace Albummodelite
                     () =>
                     {
                         titlePosition = idx;
-                        RefreshUI();
+                        RefreshCoverDesignerPreservingScroll();
                     },
                     7
                 );
@@ -1408,7 +1411,7 @@ namespace Albummodelite
                 () =>
                 {
                     showGroupName = !showGroupName;
-                    RefreshUI();
+                    RefreshCoverDesignerPreservingScroll();
                 },
                 7
             );
@@ -1424,7 +1427,7 @@ namespace Albummodelite
                 () =>
                 {
                     ornamentStyle = (ornamentStyle + 1) % ornaments.Length;
-                    RefreshUI();
+                    RefreshCoverDesignerPreservingScroll();
                 },
                 7
             );
@@ -1452,7 +1455,7 @@ namespace Albummodelite
                 () =>
                 {
                     portraitScale = Mathf.Clamp(portraitScale - 0.05f, 0.75f, 1.30f);
-                    RefreshUI();
+                    RefreshCoverDesignerPreservingScroll();
                 },
                 10
             );
@@ -1479,7 +1482,7 @@ namespace Albummodelite
                 () =>
                 {
                     portraitScale = Mathf.Clamp(portraitScale + 0.05f, 0.75f, 1.30f);
-                    RefreshUI();
+                    RefreshCoverDesignerPreservingScroll();
                 },
                 10
             );
@@ -1507,7 +1510,7 @@ namespace Albummodelite
                 () =>
                 {
                     centerEmphasis = Mathf.Clamp(centerEmphasis - 0.03f, 1.00f, 1.25f);
-                    RefreshUI();
+                    RefreshCoverDesignerPreservingScroll();
                 },
                 9
             );
@@ -1522,7 +1525,7 @@ namespace Albummodelite
                 () =>
                 {
                     centerEmphasis = Mathf.Clamp(centerEmphasis + 0.03f, 1.00f, 1.25f);
-                    RefreshUI();
+                    RefreshCoverDesignerPreservingScroll();
                 },
                 9
             );
@@ -1550,7 +1553,7 @@ namespace Albummodelite
                 () =>
                 {
                     portraitYOffset = Mathf.Clamp(portraitYOffset - 8f, -80f, 80f);
-                    RefreshUI();
+                    RefreshCoverDesignerPreservingScroll();
                 },
                 9
             );
@@ -1577,7 +1580,7 @@ namespace Albummodelite
                 () =>
                 {
                     portraitYOffset = Mathf.Clamp(portraitYOffset + 8f, -80f, 80f);
-                    RefreshUI();
+                    RefreshCoverDesignerPreservingScroll();
                 },
                 9
             );
@@ -1605,7 +1608,7 @@ namespace Albummodelite
                 () =>
                 {
                     portraitSpacing = Mathf.Clamp(portraitSpacing - 0.05f, 0.70f, 1.35f);
-                    RefreshUI();
+                    RefreshCoverDesignerPreservingScroll();
                 },
                 9
             );
@@ -1620,7 +1623,7 @@ namespace Albummodelite
                 () =>
                 {
                     portraitSpacing = Mathf.Clamp(portraitSpacing + 0.05f, 0.70f, 1.35f);
-                    RefreshUI();
+                    RefreshCoverDesignerPreservingScroll();
                 },
                 9
             );
@@ -1648,7 +1651,7 @@ namespace Albummodelite
                 () =>
                 {
                     effectsIntensity = Mathf.Clamp(effectsIntensity - 0.10f, 0.40f, 1.50f);
-                    RefreshUI();
+                    RefreshCoverDesignerPreservingScroll();
                 },
                 9
             );
@@ -1675,7 +1678,7 @@ namespace Albummodelite
                 () =>
                 {
                     effectsIntensity = Mathf.Clamp(effectsIntensity + 0.10f, 0.40f, 1.50f);
-                    RefreshUI();
+                    RefreshCoverDesignerPreservingScroll();
                 },
                 9
             );
@@ -1692,7 +1695,7 @@ namespace Albummodelite
                 () =>
                 {
                     frameStyle = (frameStyle + 1) % frameNames.Length;
-                    RefreshUI();
+                    RefreshCoverDesignerPreservingScroll();
                 },
                 7
             );
@@ -1709,7 +1712,7 @@ namespace Albummodelite
                 () =>
                 {
                     titleEffect = (titleEffect + 1) % titleEffects.Length;
-                    RefreshUI();
+                    RefreshCoverDesignerPreservingScroll();
                 },
                 7
             );
@@ -1725,7 +1728,7 @@ namespace Albummodelite
                 () =>
                 {
                     RandomizeCover();
-                    RefreshUI();
+                    RefreshCoverDesignerPreservingScroll();
                 },
                 7
             );
@@ -1763,6 +1766,172 @@ namespace Albummodelite
             // For this first pass, rebuild only when the player changes pages.
             // The preview updates immediately. Selected outlines will be refreshed
             // the next time DrawCoverDesigner() runs.
+        }
+
+        private void CreateMemberPicker(Transform parent)
+        {
+            if (parent == null)
+                return;
+
+            // Keep this strip within the original 38px member-control band so the rest of
+            // the cover controls do not move. Seven/eight-member albums simply scroll.
+            const float rootWidth = 289f;
+            const float rootHeight = 38f;
+            const float viewportWidth = 279f;
+            const float viewportHeight = 30f;
+            const float thumbWidth = 30f;
+            const float thumbHeight = 30f;
+            const float thumbPitch = 40f;
+            const float sidePadding = 4f;
+
+            GameObject root = new GameObject("MemberPickerScroll");
+            root.transform.SetParent(parent, false);
+            RectTransform rootRect = root.AddComponent<RectTransform>();
+            rootRect.anchorMin = new Vector2(0f, 1f);
+            rootRect.anchorMax = new Vector2(0f, 1f);
+            rootRect.pivot = new Vector2(0f, 1f);
+            rootRect.sizeDelta = new Vector2(rootWidth, rootHeight);
+            rootRect.anchoredPosition = new Vector2(12f, -82f);
+
+            Image rootImage = root.AddComponent<Image>();
+            rootImage.color = new Color(0.95f, 0.95f, 0.97f, 0.55f);
+
+            GameObject viewport = new GameObject("Viewport");
+            viewport.transform.SetParent(root.transform, false);
+            RectTransform viewportRect = viewport.AddComponent<RectTransform>();
+            viewportRect.anchorMin = new Vector2(0f, 1f);
+            viewportRect.anchorMax = new Vector2(0f, 1f);
+            viewportRect.pivot = new Vector2(0f, 1f);
+            viewportRect.sizeDelta = new Vector2(viewportWidth, viewportHeight);
+            viewportRect.anchoredPosition = new Vector2(5f, -1f);
+            Image viewportImage = viewport.AddComponent<Image>();
+            viewportImage.color = Color.clear;
+            viewportImage.raycastTarget = true;
+            viewport.AddComponent<RectMask2D>();
+
+            GameObject contentObject = new GameObject("MemberContent");
+            contentObject.transform.SetParent(viewport.transform, false);
+            RectTransform contentRect = contentObject.AddComponent<RectTransform>();
+            contentRect.anchorMin = new Vector2(0f, 1f);
+            contentRect.anchorMax = new Vector2(0f, 1f);
+            contentRect.pivot = new Vector2(0f, 1f);
+            float requiredWidth = selectedGirls.Count > 0
+                ? sidePadding * 2f + selectedGirls.Count * thumbPitch -
+                    (thumbPitch - thumbWidth)
+                : viewportWidth;
+            contentRect.sizeDelta = new Vector2(
+                Mathf.Max(viewportWidth, requiredWidth),
+                viewportHeight);
+            contentRect.anchoredPosition = Vector2.zero;
+
+            for (int i = 0; i < selectedGirls.Count; i++)
+            {
+                data_girls.girls girl = selectedGirls[i];
+                if (girl == null)
+                    continue;
+
+                GameObject thumb = new GameObject("MemberThumb_" + i);
+                thumb.transform.SetParent(contentObject.transform, false);
+
+                RectTransform thumbRect = thumb.AddComponent<RectTransform>();
+                thumbRect.anchorMin = new Vector2(0f, 1f);
+                thumbRect.anchorMax = new Vector2(0f, 1f);
+                thumbRect.pivot = new Vector2(0f, 1f);
+                thumbRect.sizeDelta = new Vector2(thumbWidth, thumbHeight);
+                thumbRect.anchoredPosition = new Vector2(
+                    sidePadding + i * thumbPitch,
+                    0f);
+
+                Image image = thumb.AddComponent<Image>();
+                image.sprite = girl.texture.middle;
+                image.preserveAspect = true;
+
+                bool isCenter = selectedCenterGirl == girl;
+                Outline outline = thumb.AddComponent<Outline>();
+                outline.effectColor = isCenter
+                    ? new Color(0.95f, 0.72f, 0.20f)
+                    : new Color(0.75f, 0.72f, 0.88f);
+                outline.effectDistance = isCenter
+                    ? new Vector2(2f, -2f)
+                    : new Vector2(1f, -1f);
+
+                Button centerButton = thumb.AddComponent<Button>();
+                centerButton.targetGraphic = image;
+                data_girls.girls centerGirl = girl;
+                centerButton.onClick.AddListener(() =>
+                {
+                    selectedCenterGirl = centerGirl;
+                    RefreshCoverDesignerPreservingScroll();
+                });
+
+                if (isCenter)
+                {
+                    CreatePanelText(
+                        thumb.transform,
+                        "CenterCrown",
+                        "★",
+                        8,
+                        FontStyle.Bold,
+                        new Color(1f, 0.78f, 0.20f),
+                        new Vector2(19f, 0f),
+                        new Vector2(11f, 11f),
+                        TextAnchor.MiddleCenter
+                    );
+                }
+            }
+
+            GameObject scrollbarObject = new GameObject("MemberScrollbar");
+            scrollbarObject.transform.SetParent(root.transform, false);
+            RectTransform scrollbarRect = scrollbarObject.AddComponent<RectTransform>();
+            scrollbarRect.anchorMin = new Vector2(0f, 1f);
+            scrollbarRect.anchorMax = new Vector2(0f, 1f);
+            scrollbarRect.pivot = new Vector2(0f, 1f);
+            scrollbarRect.sizeDelta = new Vector2(viewportWidth - 8f, 6f);
+            scrollbarRect.anchoredPosition = new Vector2(9f, -31f);
+            Image scrollbarTrack = scrollbarObject.AddComponent<Image>();
+            scrollbarTrack.color = new Color(0.82f, 0.82f, 0.87f, 0.90f);
+
+            GameObject slidingArea = new GameObject("SlidingArea");
+            slidingArea.transform.SetParent(scrollbarObject.transform, false);
+            RectTransform slidingRect = slidingArea.AddComponent<RectTransform>();
+            slidingRect.anchorMin = Vector2.zero;
+            slidingRect.anchorMax = Vector2.one;
+            slidingRect.offsetMin = new Vector2(1f, 1f);
+            slidingRect.offsetMax = new Vector2(-1f, -1f);
+
+            GameObject handle = new GameObject("Handle");
+            handle.transform.SetParent(slidingArea.transform, false);
+            RectTransform handleRect = handle.AddComponent<RectTransform>();
+            handleRect.anchorMin = Vector2.zero;
+            handleRect.anchorMax = Vector2.one;
+            handleRect.offsetMin = Vector2.zero;
+            handleRect.offsetMax = Vector2.zero;
+            Image handleImage = handle.AddComponent<Image>();
+            handleImage.color = new Color(0.43f, 0.37f, 0.72f, 0.95f);
+
+            Scrollbar scrollbar = scrollbarObject.AddComponent<Scrollbar>();
+            scrollbar.direction = Scrollbar.Direction.LeftToRight;
+            scrollbar.handleRect = handleRect;
+            scrollbar.targetGraphic = handleImage;
+
+            ScrollRect scroll = root.AddComponent<ScrollRect>();
+            memberPickerScroll = scroll;
+            scroll.viewport = viewportRect;
+            scroll.content = contentRect;
+            scroll.horizontal = true;
+            scroll.vertical = false;
+            scroll.movementType = ScrollRect.MovementType.Clamped;
+            scroll.inertia = true;
+            scroll.decelerationRate = 0.135f;
+            scroll.scrollSensitivity = 24f;
+            scroll.horizontalScrollbar = scrollbar;
+            scroll.horizontalScrollbarVisibility = ScrollRect.ScrollbarVisibility.Permanent;
+            scroll.horizontalScrollbarSpacing = 0f;
+            scroll.horizontalNormalizedPosition = Mathf.Clamp01(memberScrollPosition);
+            scroll.onValueChanged.AddListener(value =>
+            {
+                memberScrollPosition = Mathf.Clamp01(value.x);
+            });
         }
 
         private void CreateBackgroundPicker(Transform parent)
@@ -1848,6 +2017,7 @@ namespace Albummodelite
                 Image image = thumb.AddComponent<Image>();
                 image.sprite = coverBackgrounds[i];
                 image.preserveAspect = true;
+                AlbumBackgroundCatalog.TrackUsage(thumb, coverBackgrounds[i]);
 
                 Outline outline = thumb.AddComponent<Outline>();
                 outline.effectColor = i == selectedBackground
@@ -1863,7 +2033,7 @@ namespace Albummodelite
                 {
                     selectedBackground = index;
                     selectedBackgroundKey = AlbumBackgroundCatalog.GetKey(index);
-                    RefreshUI();
+                    RefreshCoverDesignerPreservingScroll();
                 });
             }
 
@@ -1953,129 +2123,62 @@ namespace Albummodelite
             float size
         )
         {
-            GameObject holder = new GameObject(objectName);
-            holder.transform.SetParent(parent, false);
+            AlbumData previewAlbum = CreateCurrentCoverAlbumData();
+            return AlbumCoverRenderer.Build(
+                parent,
+                previewAlbum,
+                objectName,
+                anchoredPosition,
+                size);
+        }
 
-            RectTransform holderRect = holder.AddComponent<RectTransform>();
-            holderRect.anchorMin = new Vector2(0, 1);
-            holderRect.anchorMax = new Vector2(0, 1);
-            holderRect.pivot = new Vector2(0, 1);
-            holderRect.sizeDelta = new Vector2(size, size);
-            holderRect.anchoredPosition = anchoredPosition;
-
-            Image holderImage = holder.AddComponent<Image>();
-            holderImage.color = GetThemeFallbackColor();
-
-            if (coverBackgrounds.Count > 0)
-            {
-                selectedBackground = Mathf.Clamp(
-                    selectedBackground,
-                    0,
-                    coverBackgrounds.Count - 1
-                );
-
-                holderImage.sprite = coverBackgrounds[selectedBackground];
-                holderImage.type = Image.Type.Simple;
-                holderImage.preserveAspect = false;
-                holderImage.color = Color.white;
-            }
-
-            Outline outer = holder.AddComponent<Outline>();
-            outer.effectColor = new Color(0.72f, 0.70f, 0.80f);
-            outer.effectDistance = new Vector2(2, -2);
-
-            // Keep full portraits inside the album jacket.
-            RectMask2D coverMask = holder.AddComponent<RectMask2D>();
-            coverMask.padding = Vector4.zero;
-
-            AddThemeOverlay(holder.transform);
-            AddThemeEffects(holder.transform, size);
-            DrawMembersOnCover(holder.transform, size);
-            AddCoverBottomAtmosphere(holder.transform, size);
-            AddDecorativeFrame(holder.transform, size);
-
-            string title = string.IsNullOrWhiteSpace(AlbumTitle)
+        private AlbumData CreateCurrentCoverAlbumData()
+        {
+            AlbumData album = new AlbumData();
+            album.Title = string.IsNullOrWhiteSpace(AlbumTitle)
                 ? "ECLIPSE"
-                : AlbumTitle.ToUpperInvariant();
+                : AlbumTitle.Trim();
+            album.GroupName = GetCoverSubtitle();
+            album.Members = new List<data_girls.girls>(selectedGirls);
 
-            GameObject titleObj = new GameObject("CoverAlbumTitle");
-            titleObj.transform.SetParent(holder.transform, false);
+            ApplyCurrentCoverSettings(album);
+            return album;
+        }
 
-            RectTransform tr = titleObj.AddComponent<RectTransform>();
-            ApplyTitlePosition(tr);
+        private void ApplyCurrentCoverSettings(AlbumData album)
+        {
+            if (album == null)
+                return;
 
-            Text titleText = titleObj.AddComponent<Text>();
-            titleText.font = albumFonts != null && selectedFont < albumFonts.Length
-                ? albumFonts[selectedFont]
-                : AlbumUiResources.GetGameFont();
-            titleText.text = title;
-            titleText.alignment = TextAnchor.MiddleCenter;
-            int autoTitleSize = GetAutoTitleSize(title, size);
-            titleText.fontSize = autoTitleSize;
-            titleText.resizeTextForBestFit = true;
-            titleText.resizeTextMinSize = Mathf.Max(12, Mathf.RoundToInt(size * 0.040f));
-            titleText.resizeTextMaxSize = autoTitleSize;
-            titleText.color = titleColors[selectedTextColor];
-            titleText.fontStyle = FontStyle.Normal;
-            titleText.horizontalOverflow = HorizontalWrapMode.Overflow;
-            titleText.verticalOverflow = VerticalWrapMode.Overflow;
-            titleText.raycastTarget = false;
+            album.Theme = themeNames[selectedTheme];
+            album.ThemeIndex = selectedTheme;
+            album.BackgroundIndex = selectedBackground;
+            album.BackgroundKey = string.IsNullOrEmpty(selectedBackgroundKey)
+                ? AlbumBackgroundCatalog.GetKey(selectedBackground)
+                : selectedBackgroundKey;
+            album.LayoutIndex = selectedLayout;
+            album.FontIndex = selectedFont;
+            album.FontKey = AlbumFontCatalog.GetKey(selectedFont);
+            album.TextColorIndex = selectedTextColor;
+            album.TitlePosition = titlePosition;
+            album.ShowGroupName = showGroupName;
+            album.OrnamentStyle = ornamentStyle;
+            album.FrameStyle = frameStyle;
+            album.TitleEffect = titleEffect;
+            album.PortraitScale = portraitScale;
+            album.CenterEmphasis = centerEmphasis;
+            album.PortraitYOffset = portraitYOffset;
+            album.PortraitSpacing = portraitSpacing;
+            album.EffectsIntensity = effectsIntensity;
 
-            ApplyThemeTitleStyle(tr, titleText);
-
-            // Small decorative divider/crown above the album title.
-            GameObject ornamentObj = new GameObject("CoverOrnament");
-            ornamentObj.transform.SetParent(holder.transform, false);
-
-            RectTransform ornamentRect = ornamentObj.AddComponent<RectTransform>();
-            ornamentRect.anchorMin = new Vector2(0.22f, 0.255f);
-            ornamentRect.anchorMax = new Vector2(0.78f, 0.315f);
-            ornamentRect.offsetMin = Vector2.zero;
-            ornamentRect.offsetMax = Vector2.zero;
-
-            Text ornamentText = ornamentObj.AddComponent<Text>();
-            ornamentText.font = AlbumUiResources.GetGameFont();
-            ornamentText.text = GetOrnamentText();
-            ornamentText.fontSize = Mathf.Max(10, Mathf.RoundToInt(size * 0.035f));
-            ornamentText.alignment = TextAnchor.MiddleCenter;
-            ornamentText.color = titleColors[selectedTextColor];
-            ornamentText.raycastTarget = false;
-
-            Shadow ornamentShadow = ornamentObj.AddComponent<Shadow>();
-            ornamentShadow.effectColor = new Color(0, 0, 0, 0.35f);
-            ornamentShadow.effectDistance = new Vector2(1, -1);
-
-            ApplyTitleEffect(titleObj, titleText);
-
-            // Subtitle stays inside the square instead of being placed below it.
-            GameObject subtitleObj = new GameObject("CoverSubtitle");
-            subtitleObj.transform.SetParent(holder.transform, false);
-
-            RectTransform sr = subtitleObj.AddComponent<RectTransform>();
-            sr.anchorMin = new Vector2(0.10f, 0.025f);
-            sr.anchorMax = new Vector2(0.90f, 0.085f);
-            sr.offsetMin = Vector2.zero;
-            sr.offsetMax = Vector2.zero;
-
-            Text subtitleText = subtitleObj.AddComponent<Text>();
-            subtitleText.font = albumFonts != null && selectedFont >= 0 && selectedFont < albumFonts.Length
-                ? albumFonts[selectedFont]
-                : AlbumUiResources.GetGameFont();
-            subtitleText.text = showGroupName ? GetCoverSubtitle() : "";
-            subtitleText.fontSize = Mathf.Max(8, Mathf.RoundToInt(size * 0.03f));
-            subtitleText.fontStyle = FontStyle.Normal;
-            subtitleText.color = titleColors[selectedTextColor];
-            subtitleText.alignment = TextAnchor.MiddleCenter;
-            subtitleText.resizeTextForBestFit = true;
-            subtitleText.resizeTextMinSize = 7;
-            subtitleText.resizeTextMaxSize = Mathf.Max(10, Mathf.RoundToInt(size * 0.04f));
-            subtitleText.raycastTarget = false;
-
-            Shadow subtitleShadow = subtitleObj.AddComponent<Shadow>();
-            subtitleShadow.effectColor = new Color(0, 0, 0, 0.50f);
-            subtitleShadow.effectDistance = new Vector2(1, -1);
-
-            return holder;
+            album.CenterMemberIndex =
+                selectedCenterGirl != null
+                    ? selectedGirls.IndexOf(selectedCenterGirl)
+                    : -1;
+            album.HasCenterMemberId = selectedCenterGirl != null;
+            album.CenterMemberId = selectedCenterGirl != null
+                ? selectedCenterGirl.id
+                : -1;
         }
 
         private void RetireUiObject(GameObject obj)
@@ -2092,283 +2195,6 @@ namespace Albummodelite
             yield return new WaitForSecondsRealtime(0.6f);
             if (obj != null)
                 Destroy(obj);
-        }
-
-        private void AddCoverBottomAtmosphere(Transform parent, float size)
-        {
-            Color baseColor;
-
-            switch (selectedTheme)
-            {
-                case 1:
-                    baseColor = new Color(0.05f, 0.02f, 0.09f, 1f);
-                    break;
-                case 2:
-                    baseColor = new Color(0.22f, 0.03f, 0.40f, 1f);
-                    break;
-                case 3:
-                    baseColor = new Color(0.56f, 0.38f, 0.22f, 1f);
-                    break;
-                case 4:
-                    baseColor = new Color(0.92f, 0.92f, 0.94f, 1f);
-                    break;
-                default:
-                    baseColor = new Color(0.74f, 0.58f, 0.94f, 1f);
-                    break;
-            }
-
-            // Wide soft haze.
-            GameObject haze = new GameObject("WideLegHaze");
-            haze.transform.SetParent(parent, false);
-
-            RectTransform hr = haze.AddComponent<RectTransform>();
-            hr.anchorMin = new Vector2(0f, 0.18f);
-            hr.anchorMax = new Vector2(1f, 0.58f);
-            hr.offsetMin = Vector2.zero;
-            hr.offsetMax = Vector2.zero;
-
-            Image hazeImage = haze.AddComponent<Image>();
-            hazeImage.raycastTarget = false;
-            hazeImage.sprite = CreateVerticalFadeSprite(
-                baseColor,
-                0.00f,
-                0.28f * effectsIntensity
-            );
-            hazeImage.type = Image.Type.Simple;
-
-            // Stronger bottom fade that actually hides cutoffs.
-            GameObject bottom = new GameObject("StrongLegFade");
-            bottom.transform.SetParent(parent, false);
-
-            RectTransform br = bottom.AddComponent<RectTransform>();
-            br.anchorMin = new Vector2(0f, 0.08f);
-            br.anchorMax = new Vector2(1f, 0.36f);
-            br.offsetMin = Vector2.zero;
-            br.offsetMax = Vector2.zero;
-
-            Image bottomImage = bottom.AddComponent<Image>();
-            bottomImage.raycastTarget = false;
-            bottomImage.sprite = CreateVerticalFadeSprite(
-                baseColor,
-                0.00f,
-                0.72f * effectsIntensity
-            );
-            bottomImage.type = Image.Type.Simple;
-        }
-
-        private Sprite CreateVerticalFadeSprite(
-            Color color,
-            float topAlpha,
-            float bottomAlpha
-        )
-        {
-            const int height = 64;
-
-            Texture2D tex = new Texture2D(
-                1,
-                height,
-                TextureFormat.RGBA32,
-                false
-            );
-
-            tex.wrapMode = TextureWrapMode.Clamp;
-            tex.filterMode = FilterMode.Bilinear;
-
-            for (int y = 0; y < height; y++)
-            {
-                float t = y / (float)(height - 1);
-
-                // Smoothstep avoids the obvious "rectangle" transition.
-                float smooth = t * t * (3f - (2f * t));
-                float alpha = Mathf.Lerp(bottomAlpha, topAlpha, smooth);
-
-                tex.SetPixel(
-                    0,
-                    y,
-                    new Color(color.r, color.g, color.b, alpha)
-                );
-            }
-
-            tex.Apply();
-
-            return Sprite.Create(
-                tex,
-                new Rect(0, 0, tex.width, tex.height),
-                new Vector2(0.5f, 0.5f)
-            );
-        }
-
-        private void ApplyThemeTitleStyle(RectTransform titleRect, Text titleText)
-        {
-            switch (selectedTheme)
-            {
-                case 1: // Dark
-                    titleText.fontStyle = FontStyle.Bold;
-                    break;
-
-                case 2: // Neon
-                    titleText.fontStyle = FontStyle.Bold;
-                    break;
-
-                case 3: // Vintage
-                    titleText.fontStyle = FontStyle.Normal;
-                    break;
-
-                case 4: // Minimal
-                    titleText.fontStyle = FontStyle.Normal;
-                    break;
-
-                default:
-                    break;
-            }
-        }
-
-        private void ApplyTitlePosition(RectTransform titleRect)
-        {
-            switch (titlePosition)
-            {
-                case 0: // Top
-                    titleRect.anchorMin = new Vector2(0.08f, 0.73f);
-                    titleRect.anchorMax = new Vector2(0.92f, 0.92f);
-                    break;
-
-                case 1: // Middle
-                    titleRect.anchorMin = new Vector2(0.08f, 0.40f);
-                    titleRect.anchorMax = new Vector2(0.92f, 0.59f);
-                    break;
-
-                default: // Bottom
-                    titleRect.anchorMin = new Vector2(0.08f, 0.075f);
-                    titleRect.anchorMax = new Vector2(0.92f, 0.255f);
-                    break;
-            }
-
-            titleRect.offsetMin = Vector2.zero;
-            titleRect.offsetMax = Vector2.zero;
-        }
-
-        private int GetAutoTitleSize(string title, float size)
-        {
-            int length = string.IsNullOrEmpty(title) ? 0 : title.Length;
-            float ratio = 0.12f;
-
-            if (length >= 20)
-                ratio = 0.070f;
-            else if (length >= 16)
-                ratio = 0.080f;
-            else if (length >= 12)
-                ratio = 0.092f;
-            else if (length >= 8)
-                ratio = 0.105f;
-
-            return Mathf.RoundToInt(size * ratio);
-        }
-
-        private string GetOrnamentText()
-        {
-            switch (ornamentStyle)
-            {
-                case 1:
-                    return "──  ◆  ◇  ◆  ──";
-                case 2:
-                    return "──  ✦  ★  ✦  ──";
-                default:
-                    return "────  ♛  ────";
-            }
-        }
-
-        private void ApplyTitleEffect(GameObject titleObj, Text titleText)
-        {
-            if (titleEffect == 0)
-                return;
-
-            if (titleEffect == 1)
-            {
-                Shadow shadow = titleObj.AddComponent<Shadow>();
-                shadow.effectColor = new Color(0, 0, 0, 0.58f);
-                shadow.effectDistance = new Vector2(1.5f, -1.5f);
-                return;
-            }
-
-            Outline outline = titleObj.AddComponent<Outline>();
-
-            if (titleEffect == 2)
-            {
-                outline.effectColor = new Color(0f, 0f, 0f, 0.68f);
-                outline.effectDistance = new Vector2(1.5f, -1.5f);
-            }
-            else
-            {
-                outline.effectColor = selectedTheme == 2
-                    ? new Color(0.82f, 0.38f, 1f, 0.80f)
-                    : new Color(1f, 1f, 1f, 0.65f);
-                outline.effectDistance = new Vector2(2.5f, -2.5f);
-
-                Shadow glowShadow = titleObj.AddComponent<Shadow>();
-                glowShadow.effectColor = selectedTheme == 2
-                    ? new Color(0.55f, 0.10f, 1f, 0.45f)
-                    : new Color(0.85f, 0.75f, 1f, 0.35f);
-                glowShadow.effectDistance = new Vector2(0.5f, -0.5f);
-            }
-        }
-
-        private void AddThemeOverlay(Transform parent)
-        {
-            GameObject overlay = new GameObject("ThemeOverlay");
-            overlay.transform.SetParent(parent, false);
-
-            RectTransform r = overlay.AddComponent<RectTransform>();
-            r.anchorMin = Vector2.zero;
-            r.anchorMax = Vector2.one;
-            r.offsetMin = Vector2.zero;
-            r.offsetMax = Vector2.zero;
-
-            Image img = overlay.AddComponent<Image>();
-            img.raycastTarget = false;
-
-            switch (selectedTheme)
-            {
-                case 1: // Dark
-                    img.color = new Color(0.05f, 0.02f, 0.10f, 0.34f);
-                    break;
-
-                case 2: // Neon
-                    img.color = new Color(0.28f, 0.00f, 0.42f, 0.22f);
-                    break;
-
-                case 3: // Vintage
-                    img.color = new Color(0.65f, 0.43f, 0.20f, 0.20f);
-                    break;
-
-                case 4: // Minimal
-                    img.color = new Color(1.00f, 1.00f, 1.00f, 0.22f);
-                    break;
-
-                default: // Dreamy
-                    img.color = new Color(0.55f, 0.45f, 1.00f, 0.10f);
-                    break;
-            }
-        }
-
-        private Color GetThemeFallbackColor()
-        {
-            switch (selectedTheme)
-            {
-                case 1:
-                    return new Color(0.08f, 0.06f, 0.13f);
-
-                case 2:
-                    return new Color(0.11f, 0.04f, 0.18f);
-
-                case 3:
-                    return new Color(0.77f, 0.68f, 0.56f);
-
-                case 4:
-                    return new Color(0.93f, 0.93f, 0.93f);
-
-                default:
-                    return new Color(0.72f, 0.63f, 0.90f);
-            }
         }
 
         private string GetCoverSubtitle()
@@ -2390,171 +2216,6 @@ namespace Albummodelite
             return groupName.ToUpperInvariant();
         }
 
-        private void DrawMembersOnCover(Transform parent, float coverSize)
-        {
-            if (selectedGirls.Count == 0)
-                return;
-
-            int count = Mathf.Min(selectedGirls.Count, 8);
-            Vector2[] basePositions = GetLayoutPositions(selectedLayout, count);
-            float positionScale = coverSize / 350f;
-
-            data_girls_textures textureManager =
-                Camera.main.GetComponent<mainScript>()
-                    .Data.GetComponent<data_girls_textures>();
-
-            List<int> renderOrder = Enumerable.Range(0, count)
-                .OrderByDescending(i => basePositions[i].y)
-                .ThenBy(i => Mathf.Abs(basePositions[i].x - 175f))
-                .ToList();
-
-            int centerIndex = selectedCenterGirl != null
-                ? selectedGirls.IndexOf(selectedCenterGirl)
-                : GetCenterMemberIndex(basePositions);
-
-            if (centerIndex < 0 || centerIndex >= count)
-                centerIndex = GetCenterMemberIndex(basePositions);
-
-            foreach (int i in renderOrder)
-            {
-                data_girls.girls girl = selectedGirls[i];
-
-                float depth =
-                    Mathf.InverseLerp(225f, 120f, basePositions[i].y);
-
-                float memberScale =
-                    count <= 3 ? 1.00f :
-                    count <= 5 ? 0.91f :
-                    count <= 6 ? 0.82f :
-                    0.73f;
-
-                memberScale *= portraitScale;
-
-                if ((selectedLayout == 2 || selectedLayout == 3) && i == centerIndex)
-                    memberScale *= centerEmphasis;
-
-                Vector2 pos = basePositions[i];
-                pos.y -= 55f;
-                pos.y -= depth * 10f;
-                pos.y += portraitYOffset;
-
-                // Rim glow sits behind portrait.
-                GameObject glow = new GameObject("CoverGlow_" + i);
-                glow.transform.SetParent(parent, false);
-
-                RectTransform gr = glow.AddComponent<RectTransform>();
-                gr.anchorMin = new Vector2(0, 0);
-                gr.anchorMax = new Vector2(0, 0);
-                gr.pivot = new Vector2(0.5f, 0f);
-                gr.sizeDelta = new Vector2(
-                    170f * memberScale * positionScale,
-                    285f * memberScale * positionScale
-                );
-                gr.anchoredPosition = pos * positionScale;
-
-                Image glowImage = glow.AddComponent<Image>();
-                glowImage.sprite = CreateSoftGlowSprite();
-                glowImage.type = Image.Type.Sliced;
-                glowImage.raycastTarget = false;
-                glowImage.color = selectedTheme == 2
-                    ? new Color(0.72f, 0.25f, 1f, 0.32f * effectsIntensity)
-                    : new Color(0.90f, 0.84f, 1f, 0.22f * effectsIntensity);
-
-                GameObject idol = new GameObject("CoverMember_" + i);
-                idol.transform.SetParent(parent, false);
-
-                RectTransform r = idol.AddComponent<RectTransform>();
-                r.anchorMin = new Vector2(0, 0);
-                r.anchorMax = new Vector2(0, 0);
-                r.pivot = new Vector2(0.5f, 0f);
-                r.sizeDelta = new Vector2(
-                    150f * memberScale * positionScale,
-                    265f * memberScale * positionScale
-                );
-                r.anchoredPosition = pos * positionScale;
-
-                Image image = idol.AddComponent<Image>();
-                image.preserveAspect = true;
-                image.raycastTarget = false;
-
-                float alpha = Mathf.Lerp(0.91f, 1.00f, depth);
-                float brightness = Mathf.Lerp(0.93f, 1.00f, depth);
-                image.color = new Color(brightness, brightness, brightness, alpha);
-
-                Shadow shadow = idol.AddComponent<Shadow>();
-                shadow.effectColor = new Color(0f, 0f, 0f, 0.20f);
-                shadow.effectDistance = new Vector2(
-                    1.7f * positionScale,
-                    -1.7f * positionScale
-                );
-
-                textureManager._setFullPortrait(girl, idol);
-            }
-        }
-
-        private int GetCenterMemberIndex(Vector2[] positions)
-        {
-            int index = 0;
-            float best = float.MaxValue;
-
-            for (int i = 0; i < positions.Length; i++)
-            {
-                float score =
-                    Mathf.Abs(positions[i].x - 175f) +
-                    (positions[i].y * 0.05f);
-
-                if (score < best)
-                {
-                    best = score;
-                    index = i;
-                }
-            }
-
-            return index;
-        }
-
-        private Sprite CreateSoftGlowSprite()
-        {
-            const int size = 32;
-            Texture2D tex = new Texture2D(
-                size,
-                size,
-                TextureFormat.RGBA32,
-                false
-            );
-
-            tex.wrapMode = TextureWrapMode.Clamp;
-            tex.filterMode = FilterMode.Bilinear;
-
-            Vector2 center = new Vector2((size - 1) / 2f, (size - 1) / 2f);
-            float maxDist = size * 0.5f;
-
-            for (int y = 0; y < size; y++)
-            {
-                for (int x = 0; x < size; x++)
-                {
-                    float dx = x - center.x;
-                    float dy = y - center.y;
-                    float d = Mathf.Sqrt((dx * dx) + (dy * dy)) / maxDist;
-                    float a = Mathf.Clamp01(1f - d);
-                    a = a * a;
-                    tex.SetPixel(x, y, new Color(1f, 1f, 1f, a));
-                }
-            }
-
-            tex.Apply();
-
-            return Sprite.Create(
-                tex,
-                new Rect(0, 0, size, size),
-                new Vector2(0.5f, 0.5f),
-                100f,
-                0,
-                SpriteMeshType.FullRect,
-                new Vector4(8, 8, 8, 8)
-            );
-        }
-
         private string GetLayoutIcon(int index)
         {
             switch (index)
@@ -2570,480 +2231,6 @@ namespace Albummodelite
                 default:
                     return "● ●\n ● \n● ●";
             }
-        }
-
-        private Vector2[] GetLayoutPositions(int layoutIndex, int count)
-        {
-            // All presets show every selected member. They only change formation.
-            Vector2[] positions = new Vector2[count];
-
-            switch (Mathf.Clamp(layoutIndex, 0, 4))
-            {
-                // 1 - Centered / hero formation
-                case 0:
-                    for (int i = 0; i < count; i++)
-                    {
-                        float x = 175f + ((i - (count - 1) / 2f) * 48f);
-                        float y = 175f + (Mathf.Abs(i - (count - 1) / 2f) * 8f);
-                        positions[i] = new Vector2(x, y);
-                    }
-                    break;
-
-                // 2 - Horizontal lineup
-                case 1:
-                    for (int i = 0; i < count; i++)
-                    {
-                        float spacing = count <= 5 ? 55f : 42f;
-                        float x = 175f + ((i - (count - 1) / 2f) * spacing);
-                        positions[i] = new Vector2(x, 178f);
-                    }
-                    break;
-
-                // 3 - Pyramid / 3 back, rest front
-                case 2:
-                    {
-                        int backCount = Mathf.CeilToInt(count / 2f);
-                        int frontCount = count - backCount;
-
-                        for (int i = 0; i < backCount; i++)
-                        {
-                            float spacing = backCount <= 1 ? 0f : 72f;
-                            float x = 175f + ((i - (backCount - 1) / 2f) * spacing);
-                            positions[i] = new Vector2(x, 215f);
-                        }
-
-                        for (int i = 0; i < frontCount; i++)
-                        {
-                            float spacing = frontCount <= 1 ? 0f : 74f;
-                            float x = 175f + ((i - (frontCount - 1) / 2f) * spacing);
-                            positions[backCount + i] = new Vector2(x, 135f);
-                        }
-                    }
-                    break;
-
-                // 4 - V formation
-                case 3:
-                    if (count == 1)
-                    {
-                        positions[0] = new Vector2(175f, 155f);
-                    }
-                    else if (count == 2)
-                    {
-                        positions[0] = new Vector2(120f, 180f);
-                        positions[1] = new Vector2(230f, 180f);
-                    }
-                    else if (count == 3)
-                    {
-                        positions[0] = new Vector2(95f, 205f);
-                        positions[1] = new Vector2(175f, 145f);
-                        positions[2] = new Vector2(255f, 205f);
-                    }
-                    else if (count == 4)
-                    {
-                        positions[0] = new Vector2(75f, 210f);
-                        positions[1] = new Vector2(135f, 170f);
-                        positions[2] = new Vector2(215f, 170f);
-                        positions[3] = new Vector2(275f, 210f);
-                    }
-                    else
-                    {
-                        // Outer members are back/high, inner members are mid,
-                        // center member is clearly in front.
-                        positions[0] = new Vector2(62f, 218f);
-                        positions[1] = new Vector2(118f, 178f);
-                        positions[2] = new Vector2(175f, 135f);
-                        positions[3] = new Vector2(232f, 178f);
-                        positions[4] = new Vector2(288f, 218f);
-
-                        if (count >= 6)
-                            positions[5] = new Vector2(175f, 190f);
-
-                        if (count >= 7)
-                            positions[6] = new Vector2(92f, 145f);
-
-                        if (count >= 8)
-                            positions[7] = new Vector2(258f, 145f);
-                    }
-                    break;
-
-                // 5 - Staggered idol-poster formation
-                default:
-                    {
-                        for (int i = 0; i < count; i++)
-                        {
-                            int row = i % 2;
-                            int column = i / 2;
-
-                            float xBase = row == 0 ? 105f : 135f;
-                            float x = xBase + (column * 65f);
-                            float y = row == 0 ? 205f : 125f;
-
-                            positions[i] = new Vector2(x, y);
-                        }
-                    }
-                    break;
-            }
-
-            for (int i = 0; i < positions.Length; i++)
-            {
-                positions[i].x =
-                    175f + ((positions[i].x - 175f) * portraitSpacing);
-            }
-
-            return positions;
-        }
-
-        private void AddThemeEffects(Transform parent, float size)
-        {
-            switch (selectedTheme)
-            {
-                case 0:
-                    AddDreamyEffects(parent, size);
-                    break;
-                case 1:
-                    AddDarkEffects(parent, size);
-                    break;
-                case 2:
-                    AddNeonEffects(parent, size);
-                    break;
-                case 3:
-                    AddVintageEffects(parent, size);
-                    break;
-                case 4:
-                    AddMinimalEffects(parent, size);
-                    break;
-            }
-        }
-
-        private void AddDreamyEffects(Transform parent, float size)
-        {
-            AddSimpleParticleField(
-                parent,
-                "Petal",
-                12,
-                new Color(1f, 0.72f, 0.90f, 0.35f * effectsIntensity),
-                size,
-                6f,
-                14f
-            );
-
-            AddSimpleParticleField(
-                parent,
-                "Sparkle",
-                18,
-                new Color(1f, 1f, 1f, 0.28f * effectsIntensity),
-                size,
-                2f,
-                5f
-            );
-        }
-
-        private void AddDarkEffects(Transform parent, float size)
-        {
-            AddVignette(parent, new Color(0f, 0f, 0f, 0.34f * effectsIntensity));
-            AddSimpleParticleField(
-                parent,
-                "Smoke",
-                8,
-                new Color(0.15f, 0.12f, 0.20f, 0.12f * effectsIntensity),
-                size,
-                18f,
-                35f
-            );
-        }
-
-        private void AddNeonEffects(Transform parent, float size)
-        {
-            AddSimpleParticleField(
-                parent,
-                "NeonParticle",
-                22,
-                new Color(0.82f, 0.35f, 1f, 0.32f * effectsIntensity),
-                size,
-                2f,
-                7f
-            );
-
-            for (int i = 0; i < 5; i++)
-            {
-                GameObject streak = new GameObject("LightStreak_" + i);
-                streak.transform.SetParent(parent, false);
-
-                RectTransform r = streak.AddComponent<RectTransform>();
-                r.anchorMin = new Vector2(0.08f + i * 0.17f, 0.58f - i * 0.07f);
-                r.anchorMax = new Vector2(0.28f + i * 0.17f, 0.60f - i * 0.07f);
-                r.offsetMin = Vector2.zero;
-                r.offsetMax = Vector2.zero;
-                r.localRotation = Quaternion.Euler(0, 0, 18f);
-
-                Image img = streak.AddComponent<Image>();
-                img.raycastTarget = false;
-                img.color = new Color(
-                    0.70f,
-                    0.25f,
-                    1f,
-                    0.16f * effectsIntensity
-                );
-            }
-        }
-
-        private void AddVintageEffects(Transform parent, float size)
-        {
-            GameObject warm = new GameObject("WarmFade");
-            warm.transform.SetParent(parent, false);
-
-            RectTransform r = warm.AddComponent<RectTransform>();
-            r.anchorMin = Vector2.zero;
-            r.anchorMax = Vector2.one;
-            r.offsetMin = Vector2.zero;
-            r.offsetMax = Vector2.zero;
-
-            Image img = warm.AddComponent<Image>();
-            img.raycastTarget = false;
-            img.color = new Color(
-                0.52f,
-                0.30f,
-                0.12f,
-                0.12f * effectsIntensity
-            );
-
-            AddSimpleParticleField(
-                parent,
-                "Grain",
-                35,
-                new Color(0.20f, 0.15f, 0.10f, 0.10f * effectsIntensity),
-                size,
-                1f,
-                2f
-            );
-        }
-
-        private void AddMinimalEffects(Transform parent, float size)
-        {
-            for (int i = 0; i < 3; i++)
-            {
-                GameObject line = new GameObject("GeoLine_" + i);
-                line.transform.SetParent(parent, false);
-
-                RectTransform r = line.AddComponent<RectTransform>();
-                r.anchorMin = new Vector2(0.12f, 0.72f - i * 0.14f);
-                r.anchorMax = new Vector2(0.88f, 0.725f - i * 0.14f);
-                r.offsetMin = Vector2.zero;
-                r.offsetMax = Vector2.zero;
-
-                Image img = line.AddComponent<Image>();
-                img.raycastTarget = false;
-                img.color = new Color(1f, 1f, 1f, 0.16f * effectsIntensity);
-            }
-        }
-
-        private void AddSimpleParticleField(
-            Transform parent,
-            string prefix,
-            int count,
-            Color color,
-            float size,
-            float minSize,
-            float maxSize
-        )
-        {
-            System.Random rng = new System.Random(
-                (selectedTheme + 1) * 113 +
-                selectedBackground * 17 +
-                prefix.GetHashCode()
-            );
-
-            for (int i = 0; i < count; i++)
-            {
-                GameObject p = new GameObject(prefix + "_" + i);
-                p.transform.SetParent(parent, false);
-
-                RectTransform r = p.AddComponent<RectTransform>();
-
-                float x = (float)rng.NextDouble();
-                float y = (float)rng.NextDouble();
-                float s = Mathf.Lerp(
-                    minSize,
-                    maxSize,
-                    (float)rng.NextDouble()
-                );
-
-                r.anchorMin = new Vector2(x, y);
-                r.anchorMax = new Vector2(x, y);
-                r.pivot = new Vector2(0.5f, 0.5f);
-                r.sizeDelta = new Vector2(s, s * 0.65f);
-                r.anchoredPosition = Vector2.zero;
-                r.localRotation = Quaternion.Euler(
-                    0,
-                    0,
-                    Mathf.Lerp(-40f, 40f, (float)rng.NextDouble())
-                );
-
-                Image img = p.AddComponent<Image>();
-                img.raycastTarget = false;
-                img.color = color;
-            }
-        }
-
-        private void AddVignette(Transform parent, Color color)
-        {
-            // Four soft edge bands create a lightweight vignette.
-            Vector2[] mins =
-            {
-                new Vector2(0f, 0f),
-                new Vector2(0.84f, 0f),
-                new Vector2(0f, 0f),
-                new Vector2(0f, 0.84f)
-            };
-
-            Vector2[] maxs =
-            {
-                new Vector2(0.16f, 1f),
-                new Vector2(1f, 1f),
-                new Vector2(1f, 0.16f),
-                new Vector2(1f, 1f)
-            };
-
-            for (int i = 0; i < 4; i++)
-            {
-                GameObject edge = new GameObject("Vignette_" + i);
-                edge.transform.SetParent(parent, false);
-
-                RectTransform r = edge.AddComponent<RectTransform>();
-                r.anchorMin = mins[i];
-                r.anchorMax = maxs[i];
-                r.offsetMin = Vector2.zero;
-                r.offsetMax = Vector2.zero;
-
-                Image img = edge.AddComponent<Image>();
-                img.raycastTarget = false;
-                img.color = color;
-            }
-        }
-
-        private void AddDecorativeFrame(Transform parent, float size)
-        {
-            if (frameStyle == 0)
-                return;
-
-            Color frameColor;
-
-            switch (selectedTheme)
-            {
-                case 1:
-                    frameColor = new Color(0.82f, 0.82f, 0.88f, 0.72f);
-                    break;
-                case 2:
-                    frameColor = new Color(0.92f, 0.48f, 1f, 0.82f);
-                    break;
-                case 3:
-                    frameColor = new Color(0.88f, 0.72f, 0.42f, 0.78f);
-                    break;
-                case 4:
-                    frameColor = new Color(0.85f, 0.85f, 0.90f, 0.62f);
-                    break;
-                default:
-                    frameColor = new Color(1f, 0.78f, 0.96f, 0.72f);
-                    break;
-            }
-
-            float thickness = Mathf.Max(
-                1f,
-                size * (frameStyle == 4 ? 0.009f : 0.005f)
-            );
-
-            AddFrameLine(parent, "FrameTop",
-                new Vector2(0.035f, 0.955f),
-                new Vector2(0.965f, 0.955f),
-                thickness,
-                frameColor);
-
-            AddFrameLine(parent, "FrameBottom",
-                new Vector2(0.035f, 0.045f),
-                new Vector2(0.965f, 0.045f),
-                thickness,
-                frameColor);
-
-            AddFrameLine(parent, "FrameLeft",
-                new Vector2(0.035f, 0.045f),
-                new Vector2(0.035f, 0.955f),
-                thickness,
-                frameColor);
-
-            AddFrameLine(parent, "FrameRight",
-                new Vector2(0.965f, 0.045f),
-                new Vector2(0.965f, 0.955f),
-                thickness,
-                frameColor);
-
-            string corner =
-                frameStyle == 2 ? "◆" :
-                frameStyle == 3 ? "★" :
-                frameStyle == 4 ? "✦" :
-                "";
-            Vector2[] corners =
-            {
-                new Vector2(0.055f, 0.935f),
-                new Vector2(0.945f, 0.935f),
-                new Vector2(0.055f, 0.065f),
-                new Vector2(0.945f, 0.065f)
-            };
-
-            for (int i = 0; i < corners.Length; i++)
-            {
-                GameObject obj = new GameObject("FrameCorner_" + i);
-                obj.transform.SetParent(parent, false);
-
-                RectTransform r = obj.AddComponent<RectTransform>();
-                r.anchorMin = corners[i];
-                r.anchorMax = corners[i];
-                r.pivot = new Vector2(0.5f, 0.5f);
-                r.sizeDelta = new Vector2(24, 24);
-                r.anchoredPosition = Vector2.zero;
-
-                Text t = obj.AddComponent<Text>();
-                t.font = AlbumUiResources.GetGameFont();
-                t.text = corner;
-                t.fontSize = Mathf.RoundToInt(size * 0.035f);
-                t.alignment = TextAnchor.MiddleCenter;
-                t.color = frameColor;
-                t.raycastTarget = false;
-            }
-        }
-
-        private void AddFrameLine(
-            Transform parent,
-            string name,
-            Vector2 start,
-            Vector2 end,
-            float thickness,
-            Color color
-        )
-        {
-            GameObject line = new GameObject(name);
-            line.transform.SetParent(parent, false);
-
-            RectTransform r = line.AddComponent<RectTransform>();
-
-            if (Mathf.Abs(start.y - end.y) < 0.001f)
-            {
-                r.anchorMin = new Vector2(start.x, start.y);
-                r.anchorMax = new Vector2(end.x, end.y);
-                r.sizeDelta = new Vector2(0, thickness);
-            }
-            else
-            {
-                r.anchorMin = new Vector2(start.x, start.y);
-                r.anchorMax = new Vector2(end.x, end.y);
-                r.sizeDelta = new Vector2(thickness, 0);
-            }
-
-            r.offsetMin = Vector2.zero;
-            r.offsetMax = Vector2.zero;
-
-            Image img = line.AddComponent<Image>();
-            img.raycastTarget = false;
-            img.color = color;
         }
 
         private void RandomizeCover()
@@ -3263,11 +2450,17 @@ namespace Albummodelite
                 return;
             }
 
-            if (step == AlbumStep.Info &&
-                selectedSongs.Count < 6)
+            if (step == AlbumStep.Info)
             {
-                Debug.Log("[Album] Select at least 6 songs.");
-                return;
+                int minimumSongs = GroupAlbumRules.GetMinimumSongs(this);
+                int maximumSongs = GroupAlbumRules.GetMaximumSongs(this);
+                if (selectedSongs.Count < minimumSongs || selectedSongs.Count > maximumSongs)
+                {
+                    Debug.Log(
+                        "[Album] Select " + minimumSongs + " to " + maximumSongs +
+                        " songs for this release type.");
+                    return;
+                }
             }
 
             if (step == AlbumStep.Members &&
@@ -3506,8 +2699,11 @@ namespace Albummodelite
 
         private void ResetAlbumCreation()
         {
+            GroupAlbumRules.ForgetPopupState(this);
             step = AlbumStep.Info;
+            coverScrollRestoreGeneration++;
             coverOptionsScroll = null;
+            memberPickerScroll = null;
             renderedStep = AlbumStep.Info;
             hasRenderedStep = false;
 
@@ -3525,6 +2721,7 @@ namespace Albummodelite
             selectedBackground = 0;
             selectedBackgroundKey = "";
             backgroundScrollPosition = 0f;
+            memberScrollPosition = 0f;
             selectedLayout = 2;
             selectedTextColor = 0;
 

@@ -4,63 +4,106 @@ using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
 using System.Reflection.Emit;
+using System.Security.Cryptography;
+using System.Text;
 using UnityEngine;
 
 namespace Albummodelite
 {
+    [Serializable]
+    internal sealed class AlbumVanillaCheckpointStamp
+    {
+        // v2 stores a stable path relative to persistentDataPath/data. v1 absolute
+        // paths are canonicalized during matching for in-place migration.
+        public string NormalizedSavePath = string.Empty;
+        public string LastSave = string.Empty;
+        public long PlaytimeSeconds;
+        public string GameDateTime = string.Empty;
+        public string ContentFingerprint = string.Empty;
+    }
+
     /// <summary>
-    /// Tracks the concrete vanilla save that was loaded. Save targets are deliberately kept
-    /// separate from the loaded identity: autosaves and Save As create checkpoints, but must
-    /// never make the live session pretend that it loaded from the just-written destination.
+    /// Tracks the concrete vanilla save that was loaded. Identity is a stable game-relative
+    /// slot (for example manual_saves/12/save.json), never an OS/user-specific absolute path.
+    /// The physical path is retained only transiently for I/O and checkpoint verification.
     /// </summary>
     internal static class AlbumSaveIdentity
     {
         private static string activeLoadTarget = string.Empty;
+        private static string activeLoadPhysicalTarget = string.Empty;
         private static string pendingSaveTarget = string.Empty;
 
         internal static void Reset()
         {
             activeLoadTarget = string.Empty;
+            activeLoadPhysicalTarget = string.Empty;
             pendingSaveTarget = string.Empty;
         }
 
         internal static void CaptureLoadTarget(string path)
         {
-            string normalized = Normalize(path);
-            if (string.IsNullOrEmpty(normalized))
+            string physical;
+            string relative;
+            if (!AlbumSaveScope.TryResolveLoadTarget(path, out physical, out relative))
                 return;
 
-            activeLoadTarget = normalized;
+            activeLoadTarget = relative;
+            activeLoadPhysicalTarget = physical;
             pendingSaveTarget = string.Empty;
         }
 
-        internal static void CaptureSaveTarget(string path)
+        internal static void CaptureSaveTarget(string path, bool fullPath)
         {
-            string normalized = Normalize(path);
-            if (!string.IsNullOrEmpty(normalized))
-                pendingSaveTarget = normalized;
+            string physical;
+            string relative;
+            if (AlbumSaveScope.TryResolveWriteTarget(path, fullPath, out physical, out relative))
+                pendingSaveTarget = relative;
         }
 
         internal static string GetActiveFallbackIdentity()
         {
             return string.IsNullOrEmpty(activeLoadTarget)
                 ? string.Empty
-                : "path_" + StableHash(activeLoadTarget);
+                : "slot_" + StableHash(activeLoadTarget);
         }
 
         internal static string GetPendingFallbackIdentity()
         {
             return string.IsNullOrEmpty(pendingSaveTarget)
                 ? string.Empty
-                : "path_" + StableHash(pendingSaveTarget);
+                : "slot_" + StableHash(pendingSaveTarget);
         }
 
         internal static string GetIdentityForPath(string path)
         {
-            string normalized = Normalize(path);
-            return string.IsNullOrEmpty(normalized)
-                ? string.Empty
-                : "path_" + StableHash(normalized);
+            string physical;
+            string relative;
+            if (!AlbumSaveScope.TryResolvePhysicalTarget(path, out physical, out relative))
+                return string.Empty;
+            return "slot_" + StableHash(relative);
+        }
+
+        internal static string GetIdentityForWriteTarget(string path, bool fullPath)
+        {
+            string physical;
+            string relative;
+            if (!AlbumSaveScope.TryResolveWriteTarget(path, fullPath, out physical, out relative))
+                return string.Empty;
+            return "slot_" + StableHash(relative);
+        }
+
+        internal static string GetRelativeSlotForWriteTarget(string path, bool fullPath)
+        {
+            string physical;
+            string relative;
+            return AlbumSaveScope.TryResolveWriteTarget(path, fullPath, out physical, out relative)
+                ? relative
+                : string.Empty;
+        }
+
+        internal static string GetActiveRelativeSlot()
+        {
+            return activeLoadTarget;
         }
 
         internal static string GetLogicalNewStoryAlias()
@@ -87,22 +130,208 @@ namespace Albummodelite
             pendingSaveTarget = string.Empty;
         }
 
-        private static string Normalize(string path)
+        internal static string NormalizePath(string path)
         {
-            if (string.IsNullOrWhiteSpace(path))
-                return string.Empty;
+            string physical;
+            string relative;
+            if (AlbumSaveScope.TryResolvePhysicalTarget(path, out physical, out relative))
+                return relative;
+            if (AlbumSaveScope.TryResolveLoadTarget(path, out physical, out relative))
+                return relative;
+            return string.Empty;
+        }
+
+        internal static string ResolvePhysicalPath(string path)
+        {
+            string physical;
+            string relative;
+            if (AlbumSaveScope.TryResolveLoadTarget(path, out physical, out relative))
+                return physical;
+            if (AlbumSaveScope.TryResolvePhysicalTarget(path, out physical, out relative))
+                return physical;
+            return string.Empty;
+        }
+
+        internal static string ResolveWritePhysicalPath(string path, bool fullPath)
+        {
+            string physical;
+            string relative;
+            return AlbumSaveScope.TryResolveWriteTarget(path, fullPath, out physical, out relative)
+                ? physical
+                : string.Empty;
+        }
+
+        internal static string GetActiveLoadTarget()
+        {
+            return activeLoadPhysicalTarget;
+        }
+
+        internal static string GetActiveSidecarPath()
+        {
+            return AlbumSaveScope.GetSidecarPath(activeLoadTarget);
+        }
+
+        internal static string GetSidecarPathForWriteTarget(string path, bool fullPath)
+        {
+            string physical;
+            string relative;
+            return AlbumSaveScope.TryResolveWriteTarget(path, fullPath, out physical, out relative)
+                ? AlbumSaveScope.GetSidecarPath(relative)
+                : string.Empty;
+        }
+
+        internal static bool TryCreateCheckpointStamp(
+            SaveManager.SavedData savedData,
+            string path,
+            out AlbumVanillaCheckpointStamp stamp,
+            out string errorMessage)
+        {
+            string physical;
+            string relative;
+            bool resolved = AlbumSaveScope.TryResolvePhysicalTarget(path, out physical, out relative) ||
+                            AlbumSaveScope.TryResolveLoadTarget(path, out physical, out relative);
+            return TryCreateCheckpointStampCore(savedData, resolved ? relative : string.Empty, out stamp, out errorMessage);
+        }
+
+        internal static bool TryCreateCheckpointStampForWrite(
+            SaveManager.SavedData savedData,
+            string path,
+            bool fullPath,
+            out AlbumVanillaCheckpointStamp stamp,
+            out string errorMessage)
+        {
+            string physical;
+            string relative;
+            if (!AlbumSaveScope.TryResolveWriteTarget(path, fullPath, out physical, out relative))
+            {
+                stamp = null;
+                errorMessage = "The vanilla save path could not be resolved to a stable game-relative slot.";
+                return false;
+            }
+            return TryCreateCheckpointStampCore(savedData, relative, out stamp, out errorMessage);
+        }
+
+        private static bool TryCreateCheckpointStampCore(
+            SaveManager.SavedData savedData,
+            string relativeSlot,
+            out AlbumVanillaCheckpointStamp stamp,
+            out string errorMessage)
+        {
+            stamp = null;
+            errorMessage = string.Empty;
+
+            if (savedData == null || savedData.staticVars__PlayerData == null)
+            {
+                errorMessage = "Vanilla SavedData or PlayerData is unavailable.";
+                return false;
+            }
+            if (string.IsNullOrEmpty(relativeSlot))
+            {
+                errorMessage = "The vanilla save path could not be normalized.";
+                return false;
+            }
+
             try
             {
-                string p = path.Trim().Replace('\\', '/');
-                if (!Path.IsPathRooted(p))
-                    p = Path.Combine(Application.persistentDataPath, "data", p).Replace('\\', '/');
-                if (!p.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
-                    p += ".json";
-                return Path.GetFullPath(p).Replace('\\', '/').ToLowerInvariant();
+                string compactJson = JsonUtility.ToJson(savedData, false);
+                stamp = new AlbumVanillaCheckpointStamp
+                {
+                    NormalizedSavePath = relativeSlot,
+                    LastSave = savedData.staticVars__PlayerData.LastSave ?? string.Empty,
+                    PlaytimeSeconds = savedData.staticVars__PlayerData.Playtime_Seconds,
+                    GameDateTime = savedData.staticVars__dateTime ?? string.Empty,
+                    ContentFingerprint = ComputeSha256Fingerprint(compactJson)
+                };
+                return true;
             }
-            catch
+            catch (Exception ex)
             {
-                return path.Trim().Replace('\\', '/').ToLowerInvariant();
+                errorMessage = "Computing the vanilla checkpoint fingerprint failed: " + ex.Message;
+                return false;
+            }
+        }
+
+        internal static bool TryCreateCheckpointStampFromJson(
+            string json,
+            string path,
+            out AlbumVanillaCheckpointStamp stamp,
+            out string errorMessage)
+        {
+            stamp = null;
+            errorMessage = string.Empty;
+            if (string.IsNullOrWhiteSpace(json))
+            {
+                errorMessage = "The vanilla save JSON is empty.";
+                return false;
+            }
+
+            try
+            {
+                SaveManager.SavedData savedData = JsonUtility.FromJson<SaveManager.SavedData>(json);
+                string physical;
+                string relative;
+                if (!AlbumSaveScope.TryResolvePhysicalTarget(path, out physical, out relative) &&
+                    !AlbumSaveScope.TryResolveLoadTarget(path, out physical, out relative))
+                {
+                    errorMessage = "The vanilla save path could not be resolved to a stable game-relative slot.";
+                    return false;
+                }
+                return TryCreateCheckpointStampCore(savedData, relative, out stamp, out errorMessage);
+            }
+            catch (Exception ex)
+            {
+                errorMessage = "Parsing the vanilla save JSON failed: " + ex.Message;
+                return false;
+            }
+        }
+
+        internal static bool CheckpointMatches(
+            AlbumVanillaCheckpointStamp saved,
+            AlbumVanillaCheckpointStamp current)
+        {
+            return saved != null && current != null &&
+                   AlbumSaveScope.IsSameLogicalSlot(saved.NormalizedSavePath, current.NormalizedSavePath) &&
+                   string.Equals(saved.LastSave, current.LastSave, StringComparison.Ordinal) &&
+                   saved.PlaytimeSeconds == current.PlaytimeSeconds &&
+                   string.Equals(saved.GameDateTime, current.GameDateTime, StringComparison.Ordinal) &&
+                   string.Equals(saved.ContentFingerprint, current.ContentFingerprint, StringComparison.Ordinal);
+        }
+
+        internal static bool CheckpointIsSameSlot(
+            AlbumVanillaCheckpointStamp saved,
+            AlbumVanillaCheckpointStamp current)
+        {
+            return saved != null && current != null &&
+                   AlbumSaveScope.IsSameLogicalSlot(saved.NormalizedSavePath, current.NormalizedSavePath);
+        }
+
+        internal static bool IsValidFingerprint(string fingerprint)
+        {
+            const string prefix = "sha256:";
+            if (string.IsNullOrEmpty(fingerprint) ||
+                fingerprint.Length != prefix.Length + 64 ||
+                !fingerprint.StartsWith(prefix, StringComparison.Ordinal))
+                return false;
+
+            for (int i = prefix.Length; i < fingerprint.Length; i++)
+            {
+                char c = fingerprint[i];
+                if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')))
+                    return false;
+            }
+            return true;
+        }
+
+        private static string ComputeSha256Fingerprint(string value)
+        {
+            byte[] bytes = Encoding.UTF8.GetBytes(value ?? string.Empty);
+            using (SHA256 sha256 = SHA256.Create())
+            {
+                byte[] hash = sha256.ComputeHash(bytes);
+                StringBuilder builder = new StringBuilder("sha256:", 71);
+                for (int i = 0; i < hash.Length; i++)
+                    builder.Append(hash[i].ToString("x2"));
+                return builder.ToString();
             }
         }
 
@@ -111,7 +340,7 @@ namespace Albummodelite
             unchecked
             {
                 ulong hash = 14695981039346656037UL;
-                for (int i = 0; i < value.Length; i++)
+                for (int i = 0; i < (value ?? string.Empty).Length; i++)
                 {
                     hash ^= value[i];
                     hash *= 1099511628211UL;
@@ -119,46 +348,71 @@ namespace Albummodelite
                 return hash.ToString("x16");
             }
         }
-
-        internal static string InvokeSaveFileName(object instance, Type argumentType, object argument)
-        {
-            try
-            {
-                MethodInfo method = instance.GetType().GetMethod(
-                    "GetSaveFileName",
-                    BindingFlags.Instance | BindingFlags.NonPublic,
-                    null,
-                    new[] { argumentType },
-                    null);
-                return method != null ? method.Invoke(instance, new[] { argument }) as string : string.Empty;
-            }
-            catch
-            {
-                return string.Empty;
-            }
-        }
     }
 
-    [HarmonyPatch(typeof(SaveManager), "LoadData", new Type[] { typeof(string) })]
-    internal static class AlbumSaveIdentity_LoadPath_Patch
+    /// <summary>
+    /// Capture the exact string actually consumed by DataSaver.loadData&lt;SavedData&gt;.
+    /// This avoids calling GetLatestAutosavePath a second time and racing vanilla's own choice.
+    /// </summary>
+    [HarmonyPatch]
+    internal static class AlbumSaveIdentity_ConcreteLoadRead_Patch
     {
-        [HarmonyPrefix]
-        private static void Prefix(string path)
+        private static IEnumerable<MethodBase> TargetMethods()
         {
-            AlbumSaveIdentity.CaptureLoadTarget(path);
+            yield return RequireMethod(typeof(SaveManager), nameof(SaveManager.LoadData), new Type[] { typeof(string) });
+            yield return RequireMethod(typeof(SaveManager), nameof(SaveManager.LoadData), new Type[] { typeof(bool) });
         }
-    }
 
-    [HarmonyPatch(typeof(SaveManager), "LoadData", new Type[] { typeof(bool) })]
-    internal static class AlbumSaveIdentity_LoadBool_Patch
-    {
-        [HarmonyPrefix]
-        private static void Prefix(SaveManager __instance, bool autoSave)
+        [HarmonyTranspiler]
+        [HarmonyPriority(Priority.First)]
+        [HarmonyBefore(new string[] { "com.cosmo.imdatacore", "com.cosmo.savewriteorderingfix" })]
+        private static IEnumerable<CodeInstruction> Transpiler(
+            IEnumerable<CodeInstruction> instructions,
+            MethodBase __originalMethod)
         {
-            string path = autoSave
-                ? SaveManager.GetLatestAutosavePath()
-                : AlbumSaveIdentity.InvokeSaveFileName(__instance, typeof(bool), false);
-            AlbumSaveIdentity.CaptureLoadTarget(path);
+            MethodInfo capture = AccessTools.Method(
+                typeof(AlbumSaveIdentity),
+                nameof(AlbumSaveIdentity.CaptureLoadTarget),
+                new Type[] { typeof(string) });
+            int injected = 0;
+            foreach (CodeInstruction instruction in instructions)
+            {
+                if (IsSavedDataRead(instruction))
+                {
+                    CodeInstruction dup = new CodeInstruction(OpCodes.Dup);
+                    dup.labels.AddRange(instruction.labels);
+                    dup.blocks.AddRange(instruction.blocks);
+                    instruction.labels.Clear();
+                    instruction.blocks.Clear();
+                    yield return dup;
+                    yield return new CodeInstruction(OpCodes.Call, capture);
+                    injected++;
+                }
+                yield return instruction;
+            }
+            if (injected != 1)
+                throw new InvalidOperationException("Expected exactly one SavedData read in " +
+                    (__originalMethod == null ? "an unknown load caller" : __originalMethod.DeclaringType.FullName + "." + __originalMethod.Name) +
+                    "; found " + injected + ".");
+        }
+
+        private static bool IsSavedDataRead(CodeInstruction instruction)
+        {
+            MethodInfo method = instruction == null ? null : instruction.operand as MethodInfo;
+            if (method == null || method.DeclaringType != typeof(DataSaver) || method.Name != "loadData" || !method.IsGenericMethod)
+                return false;
+            Type[] args = method.GetGenericArguments();
+            ParameterInfo[] parameters = method.GetParameters();
+            return args.Length == 1 && args[0] == typeof(SaveManager.SavedData) &&
+                   parameters.Length == 1 && parameters[0].ParameterType == typeof(string);
+        }
+
+        private static MethodBase RequireMethod(Type type, string name, Type[] parameterTypes)
+        {
+            MethodInfo method = AccessTools.Method(type, name, parameterTypes);
+            if (method == null)
+                throw new MissingMethodException(type.FullName, name);
+            return method;
         }
     }
 
@@ -223,7 +477,7 @@ namespace Albummodelite
             MethodInfo commitMethod = AccessTools.Method(
                 typeof(AlbumPersistence),
                 nameof(AlbumPersistence.CaptureConcreteSaveWriteTarget),
-                new Type[] { typeof(string) });
+                new Type[] { typeof(SaveManager.SavedData), typeof(string), typeof(bool), typeof(bool) });
             if (commitMethod == null)
             {
                 throw new MissingMethodException(
@@ -252,7 +506,10 @@ namespace Albummodelite
                 yield return new CodeInstruction(OpCodes.Stloc, pathLocal);
                 yield return new CodeInstruction(OpCodes.Stloc, dataLocal);
 
+                yield return new CodeInstruction(OpCodes.Ldloc, dataLocal);
                 yield return new CodeInstruction(OpCodes.Ldloc, pathLocal);
+                yield return new CodeInstruction(OpCodes.Ldloc, jsonLocal);
+                yield return new CodeInstruction(OpCodes.Ldloc, fullPathLocal);
                 yield return new CodeInstruction(OpCodes.Call, commitMethod);
 
                 yield return new CodeInstruction(OpCodes.Ldloc, dataLocal);
@@ -306,6 +563,232 @@ namespace Albummodelite
             if (method == null)
                 throw new MissingMethodException(type.FullName, name);
             return method;
+        }
+    }
+
+
+    internal sealed class AlbumDeletedSaveState
+    {
+        internal string VanillaDirectoryPath = string.Empty;
+        internal bool DirectoryExistedBeforeDelete;
+        internal readonly List<string> VanillaSavePaths = new List<string>();
+    }
+
+    internal static class AlbumDeletedSaveBinding
+    {
+        internal static AlbumDeletedSaveState Capture(
+            string vanillaDirectoryPath,
+            string expectedSavePath = null)
+        {
+            if (string.IsNullOrWhiteSpace(vanillaDirectoryPath))
+                return null;
+
+            try
+            {
+                AlbumDeletedSaveState state = new AlbumDeletedSaveState
+                {
+                    VanillaDirectoryPath = Path.GetFullPath(vanillaDirectoryPath),
+                    DirectoryExistedBeforeDelete = Directory.Exists(vanillaDirectoryPath)
+                };
+
+                if (!string.IsNullOrWhiteSpace(expectedSavePath))
+                    state.VanillaSavePaths.Add(expectedSavePath);
+
+                if (Directory.Exists(state.VanillaDirectoryPath))
+                {
+                    try
+                    {
+                        foreach (string path in Directory.GetFiles(
+                            state.VanillaDirectoryPath,
+                            "*.json",
+                            SearchOption.AllDirectories))
+                        {
+                            if (!state.VanillaSavePaths.Contains(path))
+                                state.VanillaSavePaths.Add(path);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        // Keep the already-captured directory/expected path. A partial cleanup is
+                        // safer than allowing the observation helper to interfere with vanilla delete.
+                        Debug.LogWarning(
+                            "[AlbumSave] Could not enumerate every save file before deletion: " +
+                            ex.Message);
+                    }
+                }
+
+                return state;
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning(
+                    "[AlbumSave] Could not capture vanilla deletion path: " + ex.Message);
+                return null;
+            }
+        }
+
+        internal static void CleanupAfterSuccessfulDelete(AlbumDeletedSaveState state)
+        {
+            if (state == null ||
+                !state.DirectoryExistedBeforeDelete ||
+                string.IsNullOrEmpty(state.VanillaDirectoryPath) ||
+                Directory.Exists(state.VanillaDirectoryPath))
+            {
+                return;
+            }
+
+            try
+            {
+                AlbumPersistence.DeleteSupplementalStateForVanillaDeletion(
+                    state.VanillaDirectoryPath,
+                    state.VanillaSavePaths);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning(
+                    "[AlbumSave] Could not remove supplemental state for a deleted vanilla save: " +
+                    ex.Message);
+            }
+        }
+    }
+
+    [HarmonyPatch(typeof(Popup_Save), "Delete")]
+    internal static class AlbumPersistence_PopupSaveDelete_Patch
+    {
+        [HarmonyPriority(Priority.First)]
+        private static void Prefix(
+            Popup_Save __instance,
+            out AlbumDeletedSaveState __state)
+        {
+            __state = null;
+            try
+            {
+                if (__instance == null || __instance.SaveFile_ID == 0)
+                    return;
+
+                string directory = Path.Combine(
+                    Application.persistentDataPath,
+                    "data",
+                    "manual_saves",
+                    __instance.SaveFile_ID.ToString());
+                string savePath = Path.Combine(directory, "save.json");
+                __state = AlbumDeletedSaveBinding.Capture(directory, savePath);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning(
+                    "[AlbumSave] Could not prepare manual-save cleanup: " + ex.Message);
+            }
+        }
+
+        [HarmonyFinalizer]
+        [HarmonyPriority(Priority.Last)]
+        private static Exception Finalizer(
+            Exception __exception,
+            AlbumDeletedSaveState __state)
+        {
+            AlbumDeletedSaveBinding.CleanupAfterSuccessfulDelete(__state);
+            return __exception;
+        }
+    }
+
+    [HarmonyPatch]
+    internal static class AlbumPersistence_StorySaveDelete_Patch
+    {
+        private static MethodBase TargetMethod()
+        {
+            return RequirePrivateMethod(
+                typeof(Popup_Load_Story),
+                "Delete_Save",
+                new Type[] { typeof(Popup_Load_Story.save_info) });
+        }
+
+        [HarmonyPriority(Priority.First)]
+        private static void Prefix(
+            Popup_Load_Story.save_info Save,
+            out AlbumDeletedSaveState __state)
+        {
+            __state = null;
+            try
+            {
+                if (Save == null)
+                    return;
+
+                __state = AlbumDeletedSaveBinding.Capture(
+                    Save.GetDirectory(),
+                    Save.Path_File);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning(
+                    "[AlbumSave] Could not prepare story-save cleanup: " + ex.Message);
+            }
+        }
+
+        [HarmonyFinalizer]
+        [HarmonyPriority(Priority.Last)]
+        private static Exception Finalizer(
+            Exception __exception,
+            AlbumDeletedSaveState __state)
+        {
+            AlbumDeletedSaveBinding.CleanupAfterSuccessfulDelete(__state);
+            return __exception;
+        }
+
+        private static MethodBase RequirePrivateMethod(
+            Type type,
+            string name,
+            Type[] parameterTypes)
+        {
+            MethodInfo method = AccessTools.Method(type, name, parameterTypes);
+            if (method == null)
+                throw new MissingMethodException(type.FullName, name);
+            return method;
+        }
+    }
+
+    [HarmonyPatch]
+    internal static class AlbumPersistence_PlaythroughDelete_Patch
+    {
+        private static MethodBase TargetMethod()
+        {
+            MethodInfo method = AccessTools.Method(
+                typeof(Popup_Load_Story),
+                "Delete_Playthrough",
+                new Type[] { typeof(Popup_Load_Story.playthrough_info) });
+            if (method == null)
+                throw new MissingMethodException(
+                    typeof(Popup_Load_Story).FullName,
+                    "Delete_Playthrough");
+            return method;
+        }
+
+        [HarmonyPriority(Priority.First)]
+        private static void Prefix(
+            Popup_Load_Story.playthrough_info Playthrough,
+            out AlbumDeletedSaveState __state)
+        {
+            __state = null;
+            try
+            {
+                if (Playthrough != null)
+                    __state = AlbumDeletedSaveBinding.Capture(Playthrough.Dir);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning(
+                    "[AlbumSave] Could not prepare playthrough cleanup: " + ex.Message);
+            }
+        }
+
+        [HarmonyFinalizer]
+        [HarmonyPriority(Priority.Last)]
+        private static Exception Finalizer(
+            Exception __exception,
+            AlbumDeletedSaveState __state)
+        {
+            AlbumDeletedSaveBinding.CleanupAfterSuccessfulDelete(__state);
+            return __exception;
         }
     }
 }

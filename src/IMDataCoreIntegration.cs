@@ -8,8 +8,9 @@ namespace Albummodelite
 {
     /// <summary>
     /// Optional, reflection-only bridge to Cosmo's IM Data Core. Create An Album keeps no
-    /// compile-time dependency on IMDC, but when its Harmony owner is active we store the v3
-    /// state document in IMDC's branch/checkpoint-aware custom JSON namespace.
+    /// compile-time dependency on IMDC, but when its Harmony owner is active we store the unified schema document in IMDC's
+    /// branch/checkpoint-aware custom JSON namespace. The historical state_v3 key is retained
+    /// so existing IMDC branches migrate in place.
     /// </summary>
     internal static class IMDataCoreIntegration
     {
@@ -151,7 +152,7 @@ namespace Albummodelite
                     ready = false;
                     return false;
                 }
-                Debug.Log("[AlbumSave/IMDC] Using IM Data Core persistence backend.");
+                Debug.Log("[AlbumSave/IMDC] IM Data Core mirror/recovery integration is active.");
                 return true;
             }
             catch (Exception ex)

@@ -154,6 +154,9 @@ namespace CreateAnAlbumGroupRules
                 new Vector2(430, -232)
             );
 
+            // AlbumPopup.DrawSongSelector is Harmony-replaced below by the group-specific
+            // selector, whose root is SongSelectorScrollRoot. Move that actual live control,
+            // not the unused vanilla SongSelectorScroll object name.
             MoveChild(
                 root,
                 "SongSelectorScrollRoot",
@@ -619,7 +622,13 @@ namespace CreateAnAlbumGroupRules
             SetField(popup, "selectedCenterGirl", null);
         }
 
-        internal static void ResetPopupState(AlbumPopup popup)
+        internal static void ClearAllPopupState()
+        {
+            SelectedGroupIds.Clear();
+            SelectedReleaseKinds.Clear();
+        }
+
+        internal static void ForgetPopupState(AlbumPopup popup)
         {
             if (popup == null)
                 return;
@@ -627,6 +636,14 @@ namespace CreateAnAlbumGroupRules
             int key = popup.GetInstanceID();
             SelectedGroupIds.Remove(key);
             SelectedReleaseKinds.Remove(key);
+        }
+
+        internal static void ResetPopupState(AlbumPopup popup)
+        {
+            if (popup == null)
+                return;
+
+            ForgetPopupState(popup);
             SetField(popup, "panel", null);
 
             MethodInfo reset = typeof(AlbumPopup).GetMethod("ResetAlbumCreation", InstanceFlags);
@@ -647,11 +664,10 @@ namespace CreateAnAlbumGroupRules
             Groups._group group = GetSelectedGroup(popup);
             List<Groups._group> groups = GetPlayerGroups();
 
-            // The release-type selector occupies the band above the title input. Keep every
-            // field below it in a separate vertical lane and give the info page enough scroll
-            // height for the lower song selector/tip after that shift.
+            // AlbumPopup.DrawInfo now owns the release-aware vertical geometry directly.
+            // This postfix only adds the release selector/group context, so changing release
+            // type cannot rebuild the old compact 6–10-song layout underneath it.
             popup.EnsureContentHeight(510f);
-            RepositionInfoFields(content);
             DrawReleaseTypeSelector(
                 popup,
                 content
@@ -770,18 +786,13 @@ namespace CreateAnAlbumGroupRules
                 if (text != null)
                 {
                     text.text =
-                        group.Title +
-                        "  •  Selected: " +
+                        "Selected: " +
                         selectedCount +
                         " / " +
                         maximumSongs +
-                        "  •  " +
-                        AlbumReleaseRules.GetShortLabel(
-                            releaseKind
-                        ) +
-                        "  •  " +
-                        released +
-                        " released";
+                        "   •   Minimum " +
+                        minimumSongs +
+                        " songs";
 
                     text.color =
                         ready &&
@@ -848,8 +859,8 @@ namespace CreateAnAlbumGroupRules
             scrollRootRect.anchorMin = new Vector2(0, 1);
             scrollRootRect.anchorMax = new Vector2(0, 1);
             scrollRootRect.pivot = new Vector2(0, 1);
-            scrollRootRect.sizeDelta = new Vector2(680, 205);
-            scrollRootRect.anchoredPosition = new Vector2(120, -203);
+            scrollRootRect.sizeDelta = new Vector2(680, 170);
+            scrollRootRect.anchoredPosition = new Vector2(120, -264);
 
             Image bg = scrollRoot.AddComponent<Image>();
             bg.color = new Color(0.985f, 0.985f, 0.992f);

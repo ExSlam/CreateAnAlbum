@@ -78,6 +78,7 @@ namespace CreateAnAlbumGroupRules
         public int ReleaseKind;
         public List<int> SongIds = new List<int>();
         public List<int> MemberIds = new List<int>();
+        public List<AlbumMemberSnapshot> MemberSnapshots = new List<AlbumMemberSnapshot>();
         public int CenterMemberId = -1;
         public long StartTicks;
         public string Theme = "";
@@ -119,8 +120,14 @@ namespace CreateAnAlbumGroupRules
             "Manufacturing • marketing • distribution"
         };
 
+        private const int CompletionRetryInitialFrames = 60;
+        private const int CompletionRetryMaxFrames = 1800;
+
         private static AlbumProductionProject activeProject;
         private static string loadedSaveId = "";
+        private static int completionRetryFrames;
+        private static int completionRetryDelayFrames = CompletionRetryInitialFrames;
+        private static string completionBlockReason = string.Empty;
 
         internal static bool HasActiveProject
         {
@@ -143,6 +150,7 @@ namespace CreateAnAlbumGroupRules
         {
             activeProject = project;
             loadedSaveId = saveId ?? "";
+            ResetCompletionRetryState();
             if (activeProject != null)
             {
                 activeProject.SaveId = loadedSaveId;
@@ -208,12 +216,21 @@ namespace CreateAnAlbumGroupRules
         {
             activeProject = null;
             loadedSaveId = "";
+            ResetCompletionRetryState();
         }
 
         internal static void Tick()
         {
-            if (activeProject != null)
-                TryCompleteIfReady();
+            if (activeProject == null)
+                return;
+
+            if (completionRetryFrames > 0)
+            {
+                completionRetryFrames--;
+                return;
+            }
+
+            TryCompleteIfReady();
         }
 
         internal static bool TryOpenExisting(bool queueBehindCurrentPopup = false)
@@ -221,6 +238,9 @@ namespace CreateAnAlbumGroupRules
             if (activeProject == null)
                 return false;
 
+            // Opening the dashboard is an explicit user action, so permit one immediate
+            // dependency check even when the automatic retry backoff is active.
+            completionRetryFrames = 0;
             TryCompleteIfReady();
             if (activeProject == null)
                 return false;
@@ -267,6 +287,7 @@ namespace CreateAnAlbumGroupRules
                 if (song != null) project.SongIds.Add(song.id);
             foreach (data_girls.girls member in members)
                 if (member != null) project.MemberIds.Add(member.id);
+            project.MemberSnapshots = AlbumMemberRepair.CaptureMembers(members);
 
             data_girls.girls center = GroupAlbumRules.GetField<data_girls.girls>(popup, "selectedCenterGirl");
             project.CenterMemberId = center != null ? center.id : -1;
@@ -305,6 +326,7 @@ namespace CreateAnAlbumGroupRules
 
             activeProject = project;
             loadedSaveId = saveId;
+            ResetCompletionRetryState();
             AlbumPersistence.MarkDirty();
 
             BuildDashboard();
@@ -334,14 +356,17 @@ namespace CreateAnAlbumGroupRules
             if ((staticVars.dateTime.Date - start).TotalDays < StageDurations.Sum())
                 return;
 
-            ReleaseActiveProject();
+            string blockReason;
+            if (!ReleaseActiveProject(out blockReason))
+                ScheduleCompletionRetry(blockReason);
         }
 
-        private static void ReleaseActiveProject()
+        private static bool ReleaseActiveProject(out string blockReason)
         {
+            blockReason = string.Empty;
             AlbumProductionProject project = activeProject;
             if (project == null)
-                return;
+                return false;
 
             List<singles._single> songs = new List<singles._single>();
             foreach (int id in project.SongIds)
@@ -358,8 +383,9 @@ namespace CreateAnAlbumGroupRules
             int minimum = AlbumReleaseRules.GetMinimumSongs(kind);
             if (songs.Count < minimum)
             {
-                Debug.LogWarning("[AlbumProduction] Release ready but only " + songs.Count + "/" + minimum + " tracks restored.");
-                return;
+                blockReason =
+                    "only " + songs.Count + "/" + minimum + " required tracks are currently available";
+                return false;
             }
 
             List<data_girls.girls> members = new List<data_girls.girls>();
@@ -372,10 +398,13 @@ namespace CreateAnAlbumGroupRules
                 }
                 catch { }
             }
-            if (members.Count == 0)
+            bool hasHistoricalMembers =
+                (project.MemberSnapshots != null && project.MemberSnapshots.Count > 0) ||
+                (project.MemberIds != null && project.MemberIds.Count > 0);
+            if (members.Count == 0 && !hasHistoricalMembers)
             {
-                Debug.LogWarning("[AlbumProduction] Release ready but no saved members restored.");
-                return;
+                blockReason = "the production project contains no saved members";
+                return false;
             }
 
             AlbumData album = new AlbumData();
@@ -388,6 +417,11 @@ namespace CreateAnAlbumGroupRules
             album.ReleaseKind = project.ReleaseKind;
             album.Songs = new List<singles._single>(songs);
             album.Members = new List<data_girls.girls>(members);
+            album.MemberSnapshots = project.MemberSnapshots != null
+                ? new List<AlbumMemberSnapshot>(project.MemberSnapshots.Where(snapshot => snapshot != null))
+                : new List<AlbumMemberSnapshot>();
+            AlbumMemberRepair.RememberLegacyIds(album, project.MemberIds);
+            AlbumMemberRepair.CaptureAndGetSnapshots(album);
             album.Profit = -ProductionCost;
             album.Theme = project.Theme;
             album.ThemeIndex = project.ThemeIndex;
@@ -408,16 +442,53 @@ namespace CreateAnAlbumGroupRules
             album.PortraitSpacing = project.PortraitSpacing <= 0f ? 1f : project.PortraitSpacing;
             album.EffectsIntensity = project.EffectsIntensity <= 0f ? 1f : project.EffectsIntensity;
             album.CenterMemberIndex = members.FindIndex(g => g != null && g.id == project.CenterMemberId);
+            album.CenterMemberId = project.CenterMemberId;
+            album.HasCenterMemberId = project.CenterMemberId != -1;
 
             Albums.AddAlbum(album);
             AlbumSalesManager.RegisterNewAlbum(album);
             AlbumDebutRewards.TryAward(album);
 
             activeProject = null;
+            ResetCompletionRetryState();
             AlbumPersistence.MarkDirty();
             AlbumPopupHost.Close(AlbumPopupKind.Production);
             Notify("Released: " + album.Title + " • debut sales " + album.WeeklySales.ToString("N0"), true);
             Debug.Log("[AlbumProduction] RELEASED: " + album.Title + " | " + AlbumReleaseRules.GetDisplayName(kind));
+            return true;
+        }
+
+        private static void ScheduleCompletionRetry(string reason)
+        {
+            if (activeProject == null)
+                return;
+
+            string normalizedReason = string.IsNullOrWhiteSpace(reason)
+                ? "required release data is not ready"
+                : reason.Trim();
+
+            if (!string.Equals(
+                    completionBlockReason,
+                    normalizedReason,
+                    StringComparison.Ordinal))
+            {
+                Debug.LogWarning(
+                    "[AlbumProduction] Release is ready but blocked because " +
+                    normalizedReason + ". Automatic retries will use a bounded backoff.");
+                completionBlockReason = normalizedReason;
+            }
+
+            completionRetryFrames = completionRetryDelayFrames;
+            completionRetryDelayFrames = Math.Min(
+                CompletionRetryMaxFrames,
+                Math.Max(CompletionRetryInitialFrames, completionRetryDelayFrames * 2));
+        }
+
+        private static void ResetCompletionRetryState()
+        {
+            completionRetryFrames = 0;
+            completionRetryDelayFrames = CompletionRetryInitialFrames;
+            completionBlockReason = string.Empty;
         }
 
         private static int GenerateAlbumId()

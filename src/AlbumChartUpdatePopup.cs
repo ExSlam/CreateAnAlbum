@@ -165,13 +165,19 @@ namespace Albummodelite
             List<AlbumChartPeriodResult> results,
             DateTime date)
         {
+            List<AlbumChartPeriodResult> safeResults =
+                results ?? new List<AlbumChartPeriodResult>();
             pending.Enqueue(new AlbumChartPeriodReport
             {
                 Date = date,
                 SaveId = AlbumPersistence.CurrentSaveId,
                 LoadGeneration = AlbumPersistence.LoadGeneration,
-                Results = results ?? new List<AlbumChartPeriodResult>()
+                Results = safeResults
             });
+            Debug.Log(
+                "[AlbumChartRewards] Queued 14-day performance report for " +
+                date.ToString("yyyy-MM-dd") + " with " + safeResults.Count +
+                " player album result(s).");
             popupIdleSince = -1f;
             popupIdleFrames = 0;
         }

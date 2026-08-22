@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Events;
+using CreateAnAlbumGroupRules;
 
 namespace Albummodelite
 {
@@ -227,6 +228,7 @@ namespace Albummodelite
             lifecycleGeneration++;
             CleanupManager(manager);
             ClearLocalRoots();
+            GroupAlbumRules.ClearAllPopupState();
             registeredManager = null;
         }
 
@@ -282,6 +284,7 @@ namespace Albummodelite
             }
 
             registeredManager = manager;
+            NormalizeStaleRegistrations(manager);
         }
 
         private static void RegisterRoot(
@@ -446,113 +449,93 @@ namespace Albummodelite
                 onClosed();
         }
 
+        private static void NormalizeStaleRegistrations(PopupManager manager)
+        {
+            if (manager == null || manager.popups == null)
+                return;
+
+            List<PopupManager._popup> retained =
+                new List<PopupManager._popup>(manager.popups.Length);
+            for (int i = 0; i < manager.popups.Length; i++)
+            {
+                PopupManager._popup entry = manager.popups[i];
+                if (entry == null)
+                    continue;
+
+                bool invalidOpen = entry.open &&
+                    (entry.obj == null || entry.obj.GetComponent<Popup>() == null);
+                if (invalidOpen)
+                {
+                    if (PopupManager.PopupCounter > 0)
+                        PopupManager.PopupCounter--;
+                    entry.open = false;
+                }
+
+                // A registration with no object can never become usable again; dropping it also
+                // prevents vanilla IsThereAnOpenPopup()/Close() from dereferencing stale data.
+                if (entry.obj == null)
+                    continue;
+
+                retained.Add(entry);
+            }
+            manager.popups = retained.ToArray();
+        }
+
         private static void CleanupManager(PopupManager manager)
         {
             if (manager == null)
                 return;
 
-            if (manager.popups == null)
+            NormalizeStaleRegistrations(manager);
+
+            // Reset runs during scene/save transitions, including mainScript.Start. Calling
+            // vanilla PopupManager.Close() here is unsafe because PopupManager may still contain
+            // stale registrations from the previous scene and Close() dereferences their Popup
+            // component without null checks. Retire only CreateAnAlbum-owned registrations
+            // directly and leave unrelated vanilla/mod popups alone.
+            if (manager.popups != null)
             {
-                RemoveOwnedQueueEntries(manager, false);
-                return;
-            }
+                List<PopupManager._popup> retained =
+                    new List<PopupManager._popup>(manager.popups.Length);
 
-            List<PopupManager._popup> nonNull =
-                new List<PopupManager._popup>(manager.popups.Length);
-            for (int i = 0; i < manager.popups.Length; i++)
-            {
-                if (manager.popups[i] != null)
-                    nonNull.Add(manager.popups[i]);
-            }
-            manager.popups = nonNull.ToArray();
-
-            // Vanilla PopupManager.Close() assumes every entry marked open has a live object
-            // with a Popup component and dereferences both without checking. Other mods / scene
-            // transitions can leave stale registrations behind, so normalize only entries that
-            // cannot possibly represent a functioning open popup before invoking vanilla Close.
-            for (int i = 0; i < manager.popups.Length; i++)
-            {
-                PopupManager._popup entry = manager.popups[i];
-                if (entry == null || !entry.open)
-                    continue;
-
-                if (entry.obj == null || entry.obj.GetComponent<Popup>() == null)
-                {
-                    if (PopupManager.PopupCounter > 0)
-                        PopupManager.PopupCounter--;
-                    entry.open = false;
-                }
-            }
-
-            bool canCloseThroughManager = false;
-            if (manager.queue.Count > 0 && IsOwnedType(manager.queue[0]))
-            {
-                PopupManager._popup head = FindEntry(manager, manager.queue[0]);
-                canCloseThroughManager = head != null && head.open && head.obj != null;
-            }
-
-            for (int i = 0; i < manager.popups.Length; i++)
-            {
-                PopupManager._popup entry = manager.popups[i];
-                if (!IsOwnedType(entry.type) || !entry.open)
-                    continue;
-
-                if (entry.obj == null)
-                {
-                    if (PopupManager.PopupCounter > 0)
-                        PopupManager.PopupCounter--;
-                    entry.open = false;
-                    continue;
-                }
-
-                Popup popup = entry.obj.GetComponent<Popup>();
-                if (popup != null)
-                    popup.HideAnimation = false;
-                else
-                {
-                    if (PopupManager.PopupCounter > 0)
-                        PopupManager.PopupCounter--;
-                    entry.obj.SetActive(false);
-                    entry.open = false;
-                }
-            }
-
-            RemoveOwnedQueueEntries(manager, canCloseThroughManager);
-
-            if (canCloseThroughManager)
-            {
-                manager.Close();
-            }
-            else
-            {
                 for (int i = 0; i < manager.popups.Length; i++)
                 {
                     PopupManager._popup entry = manager.popups[i];
-                    if (!IsOwnedType(entry.type) || !entry.open || entry.obj == null)
+                    if (entry == null)
                         continue;
 
-                    Popup popup = entry.obj.GetComponent<Popup>();
-                    if (popup != null)
-                        entry.Close();
-                    else
+                    if (!IsOwnedType(entry.type))
                     {
-                        if (PopupManager.PopupCounter > 0)
-                            PopupManager.PopupCounter--;
+                        retained.Add(entry);
+                        continue;
+                    }
+
+                    if (entry.open && PopupManager.PopupCounter > 0)
+                        PopupManager.PopupCounter--;
+
+                    entry.open = false;
+                    if (entry.obj != null)
+                    {
+                        Popup popup = entry.obj.GetComponent<Popup>();
+                        if (popup != null)
+                            popup.HideAnimation = false;
                         entry.obj.SetActive(false);
-                        entry.open = false;
                     }
                 }
 
-                if (!HasOpenPopup(manager))
-                {
-                    if (manager.queue.Count == 0)
-                        manager.Close();
-                    else
-                        manager.RunTheQueue();
-                }
+                manager.popups = retained.ToArray();
             }
 
-            RemoveRegistrations(manager);
+            RemoveOwnedQueueEntries(manager, false);
+
+            // If no registered/queued popup is actually open, a positive PopupCounter is stale
+            // and would permanently block hotkeys plus the automatic 14-day report. Normalize
+            // only this demonstrably inconsistent state.
+            if (manager.queue.Count == 0 && !HasOpenPopup(manager) &&
+                PopupManager.PopupCounter > 0)
+            {
+                PopupManager.PopupCounter = 0;
+            }
         }
 
         private static void RemoveOwnedQueueEntries(
@@ -673,16 +656,27 @@ namespace Albummodelite
 
         private static bool IsPopupSystemIdle(PopupManager manager)
         {
-            if (manager == null || ActiveDialogueController.ShowingDialogue ||
-                PopupManager.PopupCounter != 0 || manager.queue.Count != 0 ||
+            if (manager == null)
+                return false;
+
+            NormalizeStaleRegistrations(manager);
+
+            if (ActiveDialogueController.ShowingDialogue ||
+                manager.queue.Count != 0 || HasOpenPopup(manager) ||
                 manager.IsThereAnOpenPopup() || HasDueWaitingEvent(manager))
             {
                 return false;
             }
 
+            // PopupCounter can be stranded above zero by a destroyed/stale popup registration.
+            // At this point the manager has no queued or live open popup, so normalizing the
+            // stale counter is safer than permanently suppressing CAA's queued report UI.
+            if (PopupManager.PopupCounter > 0)
+                PopupManager.PopupCounter = 0;
+
             try
             {
-                return staticVars.IsGameplay() && !mainScript.IsBlockingHotkeys();
+                return staticVars.IsGameplay() && !ActiveDialogueController.ShowingDialogue;
             }
             catch
             {

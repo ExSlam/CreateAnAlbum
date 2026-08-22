@@ -55,6 +55,7 @@ namespace Albummodelite
                 holderImage.type = Image.Type.Simple;
                 holderImage.preserveAspect = false;
                 holderImage.color = Color.white;
+                AlbumBackgroundCatalog.TrackUsage(holder, background);
             }
 
             Outline outer = holder.AddComponent<Outline>();
@@ -88,19 +89,39 @@ namespace Albummodelite
             RectTransform tr = titleObj.AddComponent<RectTransform>();
             ApplyTitlePosition(tr, album.TitlePosition);
 
-            Text titleText = titleObj.AddComponent<Text>();
-            titleText.font = AlbumFontCatalog.Resolve(album.FontKey, album.FontIndex);
-            titleText.text = string.IsNullOrWhiteSpace(album.Title)
+            string titleValue = string.IsNullOrWhiteSpace(album.Title)
                 ? "UNTITLED"
                 : album.Title.ToUpperInvariant();
-            titleText.alignment = TextAnchor.MiddleCenter;
-            titleText.fontSize = GetAutoTitleSize(titleText.text, size);
-            titleText.resizeTextForBestFit = true;
-            titleText.resizeTextMinSize = Mathf.Max(9, Mathf.RoundToInt(size * 0.035f));
-            titleText.resizeTextMaxSize = titleText.fontSize;
-            titleText.color = textColor;
-            titleText.fontStyle = FontStyle.Normal;
-            titleText.raycastTarget = false;
+            int titleSize = GetAutoTitleSize(titleValue, size);
+            Sprite rasterTitle = AlbumFontCatalog.RenderTextSprite(
+                album.FontKey, album.FontIndex, titleValue,
+                Mathf.Max(64, Mathf.RoundToInt(size * 0.84f)),
+                Mathf.Max(32, Mathf.RoundToInt(size * 0.20f)),
+                titleSize, textColor, TextAnchor.MiddleCenter);
+
+            if (rasterTitle != null)
+            {
+                Image titleImage = titleObj.AddComponent<Image>();
+                titleImage.sprite = rasterTitle;
+                titleImage.color = Color.white;
+                titleImage.preserveAspect = false;
+                titleImage.raycastTarget = false;
+                AlbumFontCatalog.TrackRenderedSpriteUsage(titleObj, rasterTitle);
+            }
+            else
+            {
+                Text titleText = titleObj.AddComponent<Text>();
+                titleText.font = AlbumFontCatalog.Resolve(album.FontKey, album.FontIndex);
+                titleText.text = titleValue;
+                titleText.alignment = TextAnchor.MiddleCenter;
+                titleText.fontSize = titleSize;
+                titleText.resizeTextForBestFit = true;
+                titleText.resizeTextMinSize = Mathf.Max(9, Mathf.RoundToInt(size * 0.035f));
+                titleText.resizeTextMaxSize = titleText.fontSize;
+                titleText.color = textColor;
+                titleText.fontStyle = FontStyle.Normal;
+                titleText.raycastTarget = false;
+            }
 
             ApplyTitleEffect(titleObj, album, textColor);
 
@@ -133,18 +154,37 @@ namespace Albummodelite
                 sr.offsetMin = Vector2.zero;
                 sr.offsetMax = Vector2.zero;
 
-                Text st = subtitle.AddComponent<Text>();
-                st.font = AlbumFontCatalog.Resolve(album.FontKey, album.FontIndex);
-                st.text = string.IsNullOrEmpty(album.GroupName)
+                string groupValue = string.IsNullOrEmpty(album.GroupName)
                     ? "GROUP"
                     : album.GroupName.ToUpperInvariant();
-                st.fontSize = Mathf.Max(7, Mathf.RoundToInt(size * 0.027f));
-                st.alignment = TextAnchor.MiddleCenter;
-                st.resizeTextForBestFit = true;
-                st.resizeTextMinSize = 6;
-                st.resizeTextMaxSize = Mathf.Max(8, Mathf.RoundToInt(size * 0.035f));
-                st.color = textColor;
-                st.raycastTarget = false;
+                int groupSize = Mathf.Max(7, Mathf.RoundToInt(size * 0.027f));
+                Sprite rasterGroup = AlbumFontCatalog.RenderTextSprite(
+                    album.FontKey, album.FontIndex, groupValue,
+                    Mathf.Max(48, Mathf.RoundToInt(size * 0.80f)),
+                    Mathf.Max(20, Mathf.RoundToInt(size * 0.07f)),
+                    groupSize, textColor, TextAnchor.MiddleCenter);
+                if (rasterGroup != null)
+                {
+                    Image groupImage = subtitle.AddComponent<Image>();
+                    groupImage.sprite = rasterGroup;
+                    groupImage.color = Color.white;
+                    groupImage.preserveAspect = false;
+                    groupImage.raycastTarget = false;
+                    AlbumFontCatalog.TrackRenderedSpriteUsage(subtitle, rasterGroup);
+                }
+                else
+                {
+                    Text st = subtitle.AddComponent<Text>();
+                    st.font = AlbumFontCatalog.Resolve(album.FontKey, album.FontIndex);
+                    st.text = groupValue;
+                    st.fontSize = groupSize;
+                    st.alignment = TextAnchor.MiddleCenter;
+                    st.resizeTextForBestFit = true;
+                    st.resizeTextMinSize = 6;
+                    st.resizeTextMaxSize = Mathf.Max(8, Mathf.RoundToInt(size * 0.035f));
+                    st.color = textColor;
+                    st.raycastTarget = false;
+                }
             }
         }
 
@@ -154,15 +194,18 @@ namespace Albummodelite
             float coverSize
         )
         {
-            if (album.Members == null || album.Members.Count == 0)
+            List<data_girls.girls> renderMembers =
+                Albummodelite.AlbumMemberRepair.GetRenderMembers(album);
+            if (renderMembers == null || renderMembers.Count == 0)
                 return;
 
-            int count = Mathf.Min(album.Members.Count, 8);
+            int count = Mathf.Min(renderMembers.Count, 8);
             Vector2[] positions = GetLayoutPositions(
                 album.LayoutIndex,
                 count,
                 album.PortraitSpacing
             );
+            ConstrainLargeGroupPositions(positions, count, album.PortraitScale);
 
             float positionScale = coverSize / 350f;
 
@@ -175,15 +218,11 @@ namespace Albummodelite
                 .ThenBy(i => Mathf.Abs(positions[i].x - 175f))
                 .ToList();
 
-            int centerIndex =
-                album.CenterMemberIndex >= 0 &&
-                album.CenterMemberIndex < count
-                    ? album.CenterMemberIndex
-                    : GetAutoCenterIndex(positions);
+            int centerIndex = ResolveCenterIndex(album, renderMembers, count, positions);
 
             foreach (int i in renderOrder)
             {
-                data_girls.girls girl = album.Members[i];
+                data_girls.girls girl = renderMembers[i];
                 if (girl == null)
                     continue;
 
@@ -193,12 +232,7 @@ namespace Albummodelite
                     positions[i].y
                 );
 
-                float memberScale =
-                    count <= 3 ? 1.00f :
-                    count <= 5 ? 0.91f :
-                    count <= 6 ? 0.82f :
-                    0.73f;
-
+                float memberScale = GetBaseMemberScale(count);
                 memberScale *= Mathf.Clamp(album.PortraitScale, 0.70f, 1.40f);
 
                 if ((album.LayoutIndex == 2 || album.LayoutIndex == 3) &&
@@ -250,6 +284,48 @@ namespace Albummodelite
                 );
 
                 textureManager._setFullPortrait(girl, idol);
+            }
+        }
+
+        private static float GetBaseMemberScale(int count)
+        {
+            return
+                count <= 3 ? 1.00f :
+                count <= 5 ? 0.91f :
+                count <= 6 ? 0.82f :
+                0.73f;
+        }
+
+        private static void ConstrainLargeGroupPositions(
+            Vector2[] positions,
+            int count,
+            float portraitScale
+        )
+        {
+            if (positions == null || positions.Length == 0 || count < 7)
+                return;
+
+            // Seven/eight-idol formations used to place outer portrait centers so close
+            // to the jacket edge that the cover mask cut off large parts of those idols.
+            // Compress only the horizontal formation, around the cover center, just enough
+            // to keep the nominal portrait width inside the 350x350 design coordinate space.
+            float memberScale = GetBaseMemberScale(count) *
+                Mathf.Clamp(portraitScale, 0.70f, 1.40f);
+            float halfPortraitWidth = 75f * memberScale;
+            float allowedOffset = Mathf.Max(0f, 175f - halfPortraitWidth);
+
+            float maxOffset = 0f;
+            for (int i = 0; i < positions.Length; i++)
+                maxOffset = Mathf.Max(maxOffset, Mathf.Abs(positions[i].x - 175f));
+
+            if (maxOffset <= allowedOffset || maxOffset <= 0.001f)
+                return;
+
+            float compression = allowedOffset / maxOffset;
+            for (int i = 0; i < positions.Length; i++)
+            {
+                positions[i].x =
+                    175f + ((positions[i].x - 175f) * compression);
             }
         }
 
@@ -366,6 +442,36 @@ namespace Albummodelite
             return positions;
         }
 
+        private static int ResolveCenterIndex(
+            AlbumData album,
+            List<data_girls.girls> renderMembers,
+            int count,
+            Vector2[] positions)
+        {
+            if (album != null && renderMembers != null && album.HasCenterMemberId)
+            {
+                for (int i = 0; i < count && i < renderMembers.Count; i++)
+                {
+                    data_girls.girls girl = renderMembers[i];
+                    if (girl != null && girl.id == album.CenterMemberId)
+                        return i;
+                }
+
+                // The saved center is temporarily unavailable. Do not reinterpret the legacy
+                // numeric index as a different idol; render with an automatic visual center.
+                return GetAutoCenterIndex(positions);
+            }
+
+            if (album != null &&
+                album.CenterMemberIndex >= 0 &&
+                album.CenterMemberIndex < count)
+            {
+                return album.CenterMemberIndex;
+            }
+
+            return GetAutoCenterIndex(positions);
+        }
+
         private static int GetAutoCenterIndex(Vector2[] positions)
         {
             int index = 0;
@@ -402,11 +508,17 @@ namespace Albummodelite
 
             Image img = fade.AddComponent<Image>();
             img.raycastTarget = false;
-            img.sprite = CreateVerticalFadeSprite(
+            Sprite fadeSprite = CreateVerticalFadeSprite(
                 color,
                 0f,
                 Mathf.Clamp01(0.62f * album.EffectsIntensity)
             );
+            img.sprite = fadeSprite;
+
+            // This gradient is generated per cover rather than imported from an asset. Unity
+            // does not destroy the Sprite/Texture merely because the Image GameObject dies, so
+            // explicitly tie their lifetime to the fade object.
+            AlbumOwnedSprite.Attach(fade, fadeSprite);
         }
 
         private static void AddThemeOverlay(Transform parent, AlbumData album)
@@ -671,5 +783,31 @@ namespace Albummodelite
         }
 
 
+    }
+
+    internal sealed class AlbumOwnedSprite : MonoBehaviour
+    {
+        private Sprite ownedSprite;
+
+        internal static void Attach(GameObject owner, Sprite sprite)
+        {
+            if (owner == null || sprite == null)
+                return;
+
+            AlbumOwnedSprite lifetime = owner.AddComponent<AlbumOwnedSprite>();
+            lifetime.ownedSprite = sprite;
+        }
+
+        private void OnDestroy()
+        {
+            if (ownedSprite == null)
+                return;
+
+            Texture texture = ownedSprite.texture;
+            UnityEngine.Object.Destroy(ownedSprite);
+            if (texture != null)
+                UnityEngine.Object.Destroy(texture);
+            ownedSprite = null;
+        }
     }
 }

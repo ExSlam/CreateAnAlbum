@@ -1,9 +1,39 @@
 # Create An Album changelog
 
+## 4.2.0
+
+- Fixed the empty-sidecar failure mode: repeated checkpoint-load failure no longer clears the album list and certifies that empty runtime as writable. Existing unresolved CAA data is preserved with `.loadfailed_*` diagnostics and supplemental writes are blocked instead of overwriting it with `Albums: []`.
+- Embedded a CAA-local caller-level SavedData write-ordering fallback: SavedData JSON is frozen synchronously, writes are FIFO per physical path, and known SavedData readers wait for pending writes. If Harmony owner `com.cosmo.savewriteorderingfix` is installed, the embedded layer steps aside so Cosmo's standalone SWO remains authoritative.
+- Kept CAA's concrete save mutation before `com.cosmo.imdatacore`, ensuring the schema document is present before IM Data Core prepares/forks the same vanilla checkpoint. Same-slot checkpoint mismatches caused by the historical async writer race can be recovered and rebound instead of being interpreted as an empty album history.
+- Replaced absolute-OS-path slot identity with a stable path relative to Idol Manager's `persistentDataPath/data` root. CAA now mirrors that tree under `persistentDataPath/CreateAnAlbum` and migrates old `albums_path_<hash>.json` files when possible, including moved-save migration through the embedded checkpoint's `/data/` tail.
+- Added schema-v4 historical member snapshots containing idol identity/name/type and exact texture-asset IDs only. Graduated NORMAL idols can be reconstructed as detached portrait-only shells for cover rendering while gameplay-facing album member lists contain only live registry idols. No cover/portrait image blobs are stored. Graduation Details remains optional, with a reflection-only migration bridge that can enrich old CAA ID-only members from its already-loaded historical snapshot.
+- Preserved member ordering and center-member identity across graduation/registry timing, and prevented temporarily unresolved members from erasing their saved IDs on the next save.
+- Captured the exact string passed into vanilla SavedData loads rather than independently resolving the latest autosave a second time.
+- Bumped project and mod metadata version to 4.2.0.
+
+## 4.1.4
+
+- Removed the `System.Drawing` framework reference and the 4.1.3 private-font-collection rasterizer after runtime logs showed Idol Manager Mono could not load `System.Drawing, Version=4.0.0.0`; that missing dependency caused `TypeLoadException`/`ReflectionTypeLoadException` and interrupted Harmony type discovery.
+- Replaced direct TTF cover rendering with a Win32 GDI implementation using `gdi32`/`user32` P/Invoke plus Unity `Texture2D`/`Sprite` output. Verified Unity dynamic fonts are used directly when available; GDI is reserved for TTF faces Unity 2019 cannot expose. The renderer verifies the selected GDI face against embedded TTF names and retains the normal game-font fallback if rasterization fails.
+- Made `AlbumFontCatalog.RenderTextSprite` fail-safe so any rasterizer error returns to ordinary Unity text instead of removing the album title or aborting Cover Design.
+- Made Cover Design create Back/Continue footer buttons before rendering preview content and catch step-render exceptions, so preview/font failures can no longer remove navigation or trap the user on the page.
+- Added a dedicated Cover Design refresh path that captures the nested settings scrollbar, outer page scrollbar, and background-strip position, then reapplies them over multiple Unity layout frames. Clicking a layout/theme/font/color/adjustment/background control no longer snaps the left options panel back to the top.
+- Hardened the base AlbumPopup song-selection, Continue, and Save paths to use the active Mini/EP/LP minimum and maximum instead of retaining hidden 6–10-song fallback limits.
+- Bumped project and mod metadata version to 4.1.4.
+
+## 4.1.3
+
+- Rebuilt the Album Information page around release-aware geometry instead of drawing the old compact 6–10-song page and repositioning it afterward. Changing Mini Album, EP, or Album/LP now preserves the spacing between release controls, Album Name, and song selection.
+- Made the song counter release-aware: Mini Album shows 6/6 with minimum 6, EP shows up to 10 with minimum 6, and Album/LP shows up to 15 with minimum 10. The counter only turns green when the selected count satisfies the active release type.
+- Added a direct TTF rasterization fallback for cover typography. When Unity 2019 cannot expose packaged/custom fonts through `CreateDynamicFontFromOSFont`, Create An Album reads the actual `.ttf` through a private font collection and renders album-title/group-name sprites directly, so Allura, Cinzel, Cormorant Garamond, and Cyberthrone no longer depend on Unity's cached OS-font list.
+- Changed persistence conflict policy so the valid exact physical-slot Create An Album mirror is authoritative. IM Data Core remains synchronized as a secondary/recovery copy, preventing a stale zero-album IMDC branch from overwriting a valid one-album manual-save mirror on load.
+- Removed `PopupManager.Close()` from Create An Album reset/cleanup. CAA now retires only its own stale registrations directly and repairs a stranded popup counter only when no live/queued popup exists, eliminating the startup null-reference loop that could permanently suppress automatic 14-day chart reports.
+- Bumped project and mod metadata version to 4.1.3.
+
 ## 4.1.2
 
 - Fixed the Album Information layout so the Album Name input, song heading/count, song selector, and help text are shifted below the restored Release Type controls instead of overlapping them.
-- Reworked packaged/custom TTF loading for Unity 2019 on Windows. The shared font catalog now reads preferred/family/full/PostScript names from each TTF, temporarily registers packaged files before Unity performs its first lookup, notifies Windows when font resources change, and verifies each accepted family against Unity's own installed-font enumeration so a silent fallback `Font` object is not mistaken for the shipped face. Successful and failed registration/resolution attempts are logged explicitly.
+- Reworked packaged/custom TTF loading for Unity 2019 on Windows. The shared font catalog now reads preferred/family/full/PostScript names from each TTF, temporarily registers packaged files before Unity performs its first lookup, and notifies Windows when font resources change. Resolution first uses Unity's installed-font enumeration, then falls back to direct dynamic-font lookup for Unity 2019 builds whose enumeration remains cached, validating the returned `Font` against its own naming metadata before accepting it. Successful and failed registration/resolution attempts are logged explicitly.
 - Standardized every Create An Album **Close** control on `AlbumButtonStyle.Destructive`, which uses the vanilla red action style with white text. This includes the Album Production dashboard.
 - Removed the redundant Album Detail scroll-rebuild Harmony patch. Collaboration subtitles now render inside the native `TrackListScrollRoot`, so Discography/Album Detail owns exactly one track scrollbar.
 - Reworked supplemental save timing around the exact vanilla `SavedData` write. `SaveEvent` now stages the CAA schema-v3 document without rebinding the loaded slot; a caller-level transpiler on all five known vanilla save routes commits that staged document to the concrete physical target **before** IM Data Core prepares/forks its checkpoint and before Save Write Ordering Fix handles the final writer.

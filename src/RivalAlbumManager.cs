@@ -185,7 +185,11 @@ namespace Albummodelite
             album.PortraitYOffset = UnityEngine.Random.Range(-18f, 14f);
             album.PortraitSpacing = UnityEngine.Random.Range(0.88f, 1.12f);
             album.EffectsIntensity = UnityEngine.Random.Range(0.80f, 1.20f);
-            album.CenterMemberIndex = FindCenterIndex(label);
+            album.CenterMemberId = FindCenterMemberId(label, album.Members);
+            album.HasCenterMemberId = album.CenterMemberId != -1;
+            album.CenterMemberIndex = album.HasCenterMemberId
+                ? album.Members.FindIndex(g => g != null && g.id == album.CenterMemberId)
+                : -1;
             album.Songs = new List<singles._single>();
             return album;
         }
@@ -210,7 +214,9 @@ namespace Albummodelite
             return members;
         }
 
-        private static int FindCenterIndex(RivalLabelView label)
+        private static int FindCenterMemberId(
+            RivalLabelView label,
+            List<data_girls.girls> members)
         {
             List<RivalIdolView> active = label.Roster
                 .Where(RivalsRebornIntegration.IsActiveIdol)
@@ -220,12 +226,28 @@ namespace Albummodelite
                 .Take(8)
                 .ToList();
 
-            for (int i = 0; i < active.Count; i++)
+            foreach (RivalIdolView idol in active)
             {
-                if (active[i].IsCenter)
-                    return i;
+                if (!idol.IsCenter)
+                    continue;
+
+                data_girls.girls displayGirl = RivalsRebornIntegration.TryGetDisplayGirl(idol);
+                if (displayGirl != null &&
+                    members != null &&
+                    members.Any(g => g != null && g.id == displayGirl.id))
+                {
+                    return displayGirl.id;
+                }
             }
-            return active.Count > 0 ? 0 : -1;
+
+            if (members != null)
+            {
+                data_girls.girls fallback = members.FirstOrDefault(g => g != null);
+                if (fallback != null)
+                    return fallback.id;
+            }
+
+            return -1;
         }
 
         public static long CalculateRivalFirstWeekSales(AlbumData album)

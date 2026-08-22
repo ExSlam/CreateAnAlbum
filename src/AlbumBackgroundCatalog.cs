@@ -43,6 +43,8 @@ namespace Albummodelite
             internal long Length;
             internal long LastWriteUtcTicks;
             internal Sprite Sprite;
+            internal int LeaseCount;
+            internal bool Retired;
         }
 
         private sealed class Candidate
@@ -62,7 +64,10 @@ namespace Albummodelite
         private static bool legacyRuntimeOrderCaptured;
         private static readonly Dictionary<string, CachedSprite> cache =
             new Dictionary<string, CachedSprite>(StringComparer.OrdinalIgnoreCase);
-        private static readonly List<Sprite> retiredSprites = new List<Sprite>();
+        private static readonly Dictionary<int, CachedSprite> entriesBySpriteId =
+            new Dictionary<int, CachedSprite>();
+        private static readonly List<CachedSprite> retiredEntries =
+            new List<CachedSprite>();
 
         private static bool loaded;
         private static string contentSignature = string.Empty;
@@ -98,6 +103,8 @@ namespace Albummodelite
             string signature = BuildSignature(candidates);
             if (loaded && string.Equals(signature, contentSignature, StringComparison.Ordinal))
                 return false;
+
+            PruneMissingCacheEntries(candidates);
 
             List<AlbumBackgroundOption> rebuilt = new List<AlbumBackgroundOption>();
             foreach (Candidate candidate in candidates)
@@ -207,25 +214,63 @@ namespace Albummodelite
             return options[GetIndex(key, legacyIndex)].DisplayName;
         }
 
+        internal static void TrackUsage(GameObject owner, Sprite sprite)
+        {
+            if (owner == null || sprite == null)
+                return;
+
+            CachedSprite cached;
+            int spriteId = sprite.GetInstanceID();
+            if (!entriesBySpriteId.TryGetValue(spriteId, out cached) ||
+                cached == null || cached.Sprite == null)
+            {
+                return;
+            }
+
+            cached.LeaseCount++;
+            if (!AlbumBackgroundSpriteLease.Attach(owner, spriteId))
+                cached.LeaseCount--;
+        }
+
+        internal static void ReleaseUsage(int spriteId)
+        {
+            CachedSprite cached;
+            if (!entriesBySpriteId.TryGetValue(spriteId, out cached) || cached == null)
+                return;
+
+            if (cached.LeaseCount > 0)
+                cached.LeaseCount--;
+
+            if (cached.Retired && cached.LeaseCount == 0)
+                DestroyRetiredEntry(cached);
+        }
+
         internal static void Shutdown()
         {
-            HashSet<Sprite> destroyed = new HashSet<Sprite>();
+            HashSet<int> destroyed = new HashSet<int>();
             foreach (CachedSprite cached in cache.Values)
             {
-                if (cached != null && cached.Sprite != null && destroyed.Add(cached.Sprite))
+                if (cached != null && cached.Sprite != null &&
+                    destroyed.Add(cached.Sprite.GetInstanceID()))
+                {
                     DestroySprite(cached.Sprite);
+                }
             }
-            foreach (Sprite sprite in retiredSprites)
+            foreach (CachedSprite cached in retiredEntries)
             {
-                if (sprite != null && destroyed.Add(sprite))
-                    DestroySprite(sprite);
+                if (cached != null && cached.Sprite != null &&
+                    destroyed.Add(cached.Sprite.GetInstanceID()))
+                {
+                    DestroySprite(cached.Sprite);
+                }
             }
 
             options.Clear();
             legacyRuntimeKeys.Clear();
             legacyRuntimeOrderCaptured = false;
             cache.Clear();
-            retiredSprites.Clear();
+            entriesBySpriteId.Clear();
+            retiredEntries.Clear();
             contentSignature = string.Empty;
             nextRescanUtcTicks = 0L;
             loaded = false;
@@ -301,9 +346,11 @@ namespace Albummodelite
                 return cached.Sprite;
             }
 
+            Texture2D texture = null;
+            Sprite sprite = null;
             try
             {
-                Texture2D texture = new Texture2D(2, 2);
+                texture = new Texture2D(2, 2);
                 texture.name = "AlbumBackgroundTexture_" + Path.GetFileNameWithoutExtension(candidate.FullPath);
                 texture.wrapMode = TextureWrapMode.Clamp;
                 texture.filterMode = FilterMode.Bilinear;
@@ -311,32 +358,95 @@ namespace Albummodelite
                 if (!ImageConversion.LoadImage(texture, File.ReadAllBytes(candidate.FullPath)))
                 {
                     UnityEngine.Object.Destroy(texture);
+                    texture = null;
                     Debug.LogWarning("[AlbumBackgrounds] Unity could not decode " + candidate.RelativePath + ".");
                     return null;
                 }
 
-                Sprite sprite = Sprite.Create(
+                sprite = Sprite.Create(
                     texture,
                     new Rect(0f, 0f, texture.width, texture.height),
                     new Vector2(0.5f, 0.5f));
                 sprite.name = "AlbumBackground_" + Path.GetFileNameWithoutExtension(candidate.FullPath);
 
                 if (cached != null && cached.Sprite != null)
-                    retiredSprites.Add(cached.Sprite);
+                    RetireEntry(cached);
 
-                cache[candidate.FullPath] = new CachedSprite
+                CachedSprite created = new CachedSprite
                 {
                     Length = candidate.Length,
                     LastWriteUtcTicks = candidate.LastWriteUtcTicks,
                     Sprite = sprite
                 };
+                cache[candidate.FullPath] = created;
+                entriesBySpriteId[sprite.GetInstanceID()] = created;
                 return sprite;
             }
             catch (Exception ex)
             {
+                if (sprite != null)
+                {
+                    UnityEngine.Object.Destroy(sprite);
+                    sprite = null;
+                }
+                if (texture != null)
+                {
+                    UnityEngine.Object.Destroy(texture);
+                    texture = null;
+                }
+
                 Debug.LogWarning("[AlbumBackgrounds] Could not load " + candidate.RelativePath + ": " + ex.Message);
                 return null;
             }
+        }
+
+        private static void PruneMissingCacheEntries(List<Candidate> candidates)
+        {
+            HashSet<string> livePaths = new HashSet<string>(
+                candidates != null
+                    ? candidates.Select(c => c.FullPath)
+                    : Enumerable.Empty<string>(),
+                StringComparer.OrdinalIgnoreCase);
+
+            foreach (string cachedPath in cache.Keys.ToList())
+            {
+                if (livePaths.Contains(cachedPath))
+                    continue;
+
+                CachedSprite stale = cache[cachedPath];
+                cache.Remove(cachedPath);
+                RetireEntry(stale);
+            }
+        }
+
+        private static void RetireEntry(CachedSprite cached)
+        {
+            if (cached == null || cached.Retired)
+                return;
+
+            cached.Retired = true;
+            if (cached.LeaseCount <= 0)
+            {
+                DestroyRetiredEntry(cached);
+                return;
+            }
+
+            retiredEntries.Add(cached);
+        }
+
+        private static void DestroyRetiredEntry(CachedSprite cached)
+        {
+            if (cached == null)
+                return;
+
+            if (cached.Sprite != null)
+            {
+                entriesBySpriteId.Remove(cached.Sprite.GetInstanceID());
+                DestroySprite(cached.Sprite);
+            }
+
+            cached.Sprite = null;
+            retiredEntries.Remove(cached);
         }
 
         private static bool IsSupportedImage(string path)
@@ -443,6 +553,34 @@ namespace Albummodelite
             UnityEngine.Object.Destroy(sprite);
             if (texture != null)
                 UnityEngine.Object.Destroy(texture);
+        }
+    }
+
+    internal sealed class AlbumBackgroundSpriteLease : MonoBehaviour
+    {
+        private int spriteId;
+
+        internal static bool Attach(GameObject owner, int trackedSpriteId)
+        {
+            if (owner == null || trackedSpriteId == 0)
+                return false;
+
+            AlbumBackgroundSpriteLease lease =
+                owner.AddComponent<AlbumBackgroundSpriteLease>();
+            if (lease == null)
+                return false;
+
+            lease.spriteId = trackedSpriteId;
+            return true;
+        }
+
+        private void OnDestroy()
+        {
+            if (spriteId == 0)
+                return;
+
+            AlbumBackgroundCatalog.ReleaseUsage(spriteId);
+            spriteId = 0;
         }
     }
 }

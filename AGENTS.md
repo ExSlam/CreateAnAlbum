@@ -51,26 +51,29 @@ Create An Album also has optional persistence integration with Cosmo's IM Data C
 
 - Keep IM Data Core optional and reflection-only. Do not add a compile-time IM Data Core reference.
 - Verify Harmony owner `com.cosmo.imdatacore` before using its reflection-friendly interop API.
-- Use Create An Album namespace `com.jordanss.createanalbum` and custom JSON key `state_v3` for the unified schema v3 document.
-- Album save identity must follow the concrete vanilla save/checkpoint path. Do not collapse distinct manual saves or story checkpoints back to a campaign-folder-only identity.
+- Use Create An Album namespace `com.jordanss.createanalbum` and custom JSON key `state_v3` for the unified schema-v4 document. The historical key name remains stable for migration.
+- Album save identity must follow the concrete vanilla save/checkpoint path **relative to** `Application.persistentDataPath/data`. Never persist or hash an OS/user-specific absolute path as the logical identity, and do not collapse distinct manual saves or story checkpoints back to a campaign-folder-only identity. Mirror that relative path below `Application.persistentDataPath/CreateAnAlbum`.
 - Keep **loaded identity** separate from **save destination**. Autosave, Save As, chapter save, and manual-save writes may create/fork checkpoints, but they must never rebind the in-memory loaded album/production state; only a real load may do that.
-- `SaveEvent` may stage the unified schema document, but the IM Data Core mutation must be committed at the exact concrete `SavedData` write target before IMDC prepares/forks that checkpoint.
+- `SaveEvent` may stage the unified schema document, but the IM Data Core mutation must be committed at the exact concrete `SavedData` write target before IMDC prepares/forks that checkpoint. On load, a valid exact logical-slot CAA mirror is authoritative; IMDC is secondary/recovery and must not replace that mirror solely because its wall-clock timestamp is newer.
 - Do not authoritatively write an empty supplemental checkpoint while CAA is still restoring a vanilla load.
-- The standalone mirror is a fallback and migration source, not a second independently advancing timeline.
+- The exact logical-slot standalone mirror is the authoritative CAA load source when valid and also serves as the migration anchor; IM Data Core is the secondary/recovery mirror. They must receive the same staged schema document at save boundaries rather than advancing independently. Existing-but-unusable supplemental data must never be converted into an authoritative empty album document.
 
-Create An Album is designed to coexist with Cosmo's Save Write Ordering Fix.
+Create An Album embeds a minimal SavedData write-ordering fallback and is designed to coexist with Cosmo's standalone Save Write Ordering Fix.
 
 - Never Harmony-patch generic `DataSaver<T>`.
 - Save interception belongs on the known concrete Idol Manager SavedData callers: `SaveManager.SaveData(bool, bool)`, `SaveManager.SaveChapter(tasks._chapter)`, `Popup_Save.Save()`, `Popup_Load_Story.Do_Overwrite_Save(save_info)`, and `Popup_Load_Story.Do_New_Save(string)`.
-- The shared concrete-write transpiler must leave the final SavedData writer instruction in place and run **before** `com.cosmo.imdatacore` so CAA's staged custom JSON is present when IMDC prepares/forks the target checkpoint.
-- It must also run before `com.cosmo.savewriteorderingfix`; Save Write Ordering Fix remains free to run last and replace only the final SavedData writer.
+- The CAA persistence transpiler must leave the final SavedData writer instruction in place and run **before** `com.cosmo.imdatacore` so CAA's staged custom JSON is present when IMDC prepares/forks the target checkpoint.
+- The embedded ordering transpiler runs last, freezes SavedData synchronously, and queues FIFO per physical path. It must disable itself when Harmony owner `com.cosmo.savewriteorderingfix` is present so the standalone implementation can own the final writer/read coordination instead of being double-patched.
+- Known caller-level `DataSaver.loadData<SavedData>` reads must wait for CAA's embedded pending write for the same path when the standalone SWO owner is absent.
 
 ## Cover assets and chart rendering
 
 - Album backgrounds belong in `assets/AlbumBackgrounds` and are discovered dynamically and recursively at runtime. Supported file types are `.png`, `.jpg`, and `.jpeg`; do not hard-code a background count or filename list into gameplay/UI code.
 - Persisted background identity uses stable relative-path `BackgroundKey` values. Keep `BackgroundIndex` only for migration/backward compatibility, and keep the Cover Designer and final renderer on the same shared background catalog.
 - The background picker must remain horizontally scrollable and retain enough side padding that thumbnail outlines are not clipped by its mask.
-- Packaged fonts belong in `assets/AlbumFonts` and are resolved through the shared album font catalog for both live previews and persisted cover rendering. Font resolution must not silently fall back: keep explicit success/failure diagnostics, try embedded TTF naming identities, verify accepted families against Unity's installed-font enumeration, and preserve the temporary Windows registration path needed by Unity 2019.
+- Cover Design control changes must preserve both the outer page scroll and the nested left-options scroll across rebuilt layouts; do not call the generic refresh path from cover-control callbacks without the delayed multi-frame position restore.
+- Cover Design footer navigation (Back and Continue/Release progression) must be created independently of preview rendering so a cover/font exception can never trap the user on the page.
+- Packaged fonts belong in `assets/AlbumFonts` and are resolved through the shared album font catalog for both live previews and persisted cover rendering. Font resolution must not silently fail: keep explicit success/failure diagnostics, try embedded TTF naming identities, preserve the temporary Windows registration path needed by Unity 2019, and preserve the Win32 GDI rasterization fallback for cover title/subtitle rendering when Unity cannot expose the face. **Never add a `System.Drawing` load-time dependency**; Idol Manager's Mono runtime does not provide it. A TTF-rendering failure must return `null` to the normal game-font text fallback instead of aborting cover rendering.
 - Persisted font identity uses stable `FontKey` values. Keep `FontIndex` only for migration/backward compatibility.
 - `CustomFonts` is a runtime-created, user-managed sibling of `AlbumFonts` and is not a source asset directory.
 - The Album Chart supports cover art for all Top 20 entries through four-row virtualization. Do not regress to an eager twenty-cover build or a Top-4-only render gate.

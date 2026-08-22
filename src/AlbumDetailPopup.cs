@@ -73,7 +73,7 @@ namespace Albummodelite
             AddInfoRow(panel.transform, x, 100, "Release", album.ReleaseDate.ToString("MMM d, yyyy"));
             AddInfoRow(panel.transform, x, 132, "Format", AlbumReleaseRules.GetShortLabel((AlbumReleaseKind)album.ReleaseKind));
             AddInfoRow(panel.transform, x, 164, "Songs", album.Songs != null ? album.Songs.Count.ToString() : "0");
-            AddInfoRow(panel.transform, x, 196, "Members", album.Members != null ? album.Members.Count.ToString() : "0");
+            AddInfoRow(panel.transform, x, 196, "Members", Albummodelite.AlbumMemberRepair.GetHistoricalMemberCount(album).ToString());
             AddInfoRow(panel.transform, x, 228, "Sales", FormatNumber(album.Sales));
             AddInfoRow(panel.transform, x, 260, "Peak", album.PeakChartPosition > 0 ? "#" + album.PeakChartPosition : "—");
 
